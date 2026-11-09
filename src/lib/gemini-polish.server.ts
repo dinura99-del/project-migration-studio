@@ -520,7 +520,7 @@ export class RateLimitError extends PolishError {
   }
 }
 
-export async function generatePolish(key: string, targets: Pair[], context: Pair[], signal: AbortSignal, log: Log = () => {}): Promise<string> {
+export async function generatePolish(key: string, targets: Pair[], context: Pair[], signal: AbortSignal, log: Log = () => {}, strictSinhala = false): Promise<string> {
   const model = process.env["GEMINI_POLISH_MODEL"]?.trim() || "gemini-3.5-flash-lite";
   if (!/^gemini-[a-z0-9.-]*flash[a-z0-9.-]*$/.test(model)) throw new PolishError("GEMINI_POLISH_MODEL must be a Gemini Flash model", true);
   // Retry once per model on 503 overload only, using the same key and exact cue payload.
@@ -535,7 +535,7 @@ export async function generatePolish(key: string, targets: Pair[], context: Pair
         headers: { "Content-Type": "application/json", "x-goog-api-key": key },
         signal,
         body: JSON.stringify({
-          systemInstruction: { parts: [{ text: POLISH_INSTRUCTIONS }] },
+          systemInstruction: { parts: [{ text: strictSinhala ? `${POLISH_INSTRUCTIONS}\nRETRIED CUES — OVERRIDES THE ENGLISH-NAMES EXCEPTION: Must output natural Sinhala or Sinhala phonetics, do not output English letters. Write names, callsigns, brands and acronyms in Sinhala phonetics. Preserve inline markup tags such as <i> unchanged; the no-English-letters rule applies to visible dialogue, not JSON field names or markup.` : POLISH_INSTRUCTIONS }] },
           contents: [{ role: "user", parts: [{ text: JSON.stringify({ context, targets }) }] }],
           generationConfig: {
             temperature: 0.15,
@@ -693,7 +693,6 @@ export async function polishCues(english: Cue[], sinhala: Cue[], log: Log, optio
     log(`@@pct:${pairs.length}/${pairs.length}`);
     log("@@polish_complete");
     log("  Gemini polish complete — all cues were cached, trivial or music, original timestamps preserved");
-    return repairForeignScript(out, log);
   }
 
   const defaultChunkSize = Number(process.env["GEMINI_CHUNK_SIZE"]) || 50;
@@ -818,7 +817,7 @@ export async function polishCues(english: Cue[], sinhala: Cue[], log: Log, optio
             }
             // One bad line can sink a whole chunk: retry in small pieces so the rest still get Sinhala.
             log(`  Gemini polish: chunk retries exhausted — retrying cues ${first.id}–${last.id} in small groups`);
-            result = await polishInSmallGroups(keys, targets, pairs, controller.signal, log, keyOffset);
+            result = (await polishInSmallGroups(keys, targets, pairs, controller.signal, log, keyOffset, undefined, keyCooldownUntil)).cues;
             break;
           }
         }
@@ -853,6 +852,8 @@ export async function polishCues(english: Cue[], sinhala: Cue[], log: Log, optio
   log("@@polish_complete");
   log("  Gemini polish complete — all cue IDs, order and original timestamps preserved");
   verifySubtitleAlignment(english, out, log);
+  // Repair leftovers before semantic QA so every freshly translated line is reviewed too.
+  await ensureAllSinhala(english, out, pairs, keys, log, options.generate, keyCooldownUntil, options.onChunkDone);
   const shouldSkipNetworkAudit = !options.auditBatchFn && Boolean(options.generate || (process.env["VITEST"] && options.audit !== true) || options.audit === false);
   if (!shouldSkipNetworkAudit) {
     let audit: Awaited<ReturnType<typeof runFinalQAAudit>>;
@@ -871,39 +872,77 @@ export async function polishCues(english: Cue[], sinhala: Cue[], log: Log, optio
       );
     }
   }
-  await ensureAllSinhala(english, out, pairs, keys, log, options.generate);
+  await ensureAllSinhala(english, out, pairs, keys, log, options.generate, keyCooldownUntil, options.onChunkDone);
   return repairForeignScript(out, log);
 }
 
 /** Retry cues 5 at a time; anything still failing keeps its Sinhala draft (or English, caught by the final gate). */
-async function polishInSmallGroups(keys: string[], targets: Pair[], pairs: Pair[], signal: AbortSignal, log: Log, offset = 0, generate?: Generate): Promise<Map<number, string>> {
+async function polishInSmallGroups(keys: string[], targets: Pair[], pairs: Pair[], signal: AbortSignal, log: Log, offset = 0, generate?: Generate, cooldown = new Map<string, number>(), strictSinhala = false): Promise<{ cues: Map<number, string>; temporaryIds: Set<number> }> {
   const result = new Map<number, string>();
+  const temporaryIds = new Set<number>();
+  let cursor = offset;
   for (let i = 0; i < targets.length; i += 5) {
     const group = targets.slice(i, i + 5);
-    const first = group[0]!, last = group.at(-1)!;
+    const first = group[0], last = group.at(-1);
+    if (!first || !last) continue;
     const context = [...pairs.slice(Math.max(0, first.id - 3), first.id - 1), ...pairs.slice(last.id, last.id + 2)];
     let ok: Map<number, string> | null = null;
-    for (let k = 0; k < Math.min(3, keys.length + 1) && !ok && !signal.aborted; k++) {
+    let onlyTemporary = true;
+    // One complete pool rotation plus one bounded cooldown recovery pass.
+    for (let k = 0; k < keys.length * 2 && !ok; k++) {
+      if (signal.aborted) throw new PolishError("Gemini polish cancelled — nothing published");
+      let key: string | undefined;
+      while (!key) {
+        let soonest = Infinity;
+        for (let n = 0; n < keys.length; n++) {
+          const index = (cursor + n) % keys.length;
+          const candidate = keys[index];
+          if (!candidate) continue;
+          const until = cooldown.get(candidate) ?? 0;
+          if (until <= Date.now()) { key = candidate; cursor = index + 1; break; }
+          soonest = Math.min(soonest, until);
+        }
+        if (!key) {
+          if (!Number.isFinite(soonest)) throw new PolishError("No Gemini keys available", true);
+          const waitMs = Math.max(1, soonest - Date.now());
+          log(`  All Gemini keys cooling down; leftover retry waits ${Math.ceil(waitMs / 1000)}s (cues ${first.id}–${last.id})`);
+          await waitForRetry(waitMs, signal);
+        }
+      }
       try {
-        const key = keys[(offset + i + k) % keys.length]!;
-        const raw = generate ? await generate(key, group, context, signal) : await generatePolish(key, group, context, signal, log);
+        const raw = generate ? await generate(key, group, context, signal) : await generatePolish(key, group, context, signal, log, strictSinhala);
         ok = validatePolish(group, raw);
+        if (strictSinhala && [...ok.values()].some((text) => /[A-Za-z]/.test(text.replace(/<[^>]+>/g, "")))) {
+          ok = null;
+          throw new PolishError("Retried dialogue must use Sinhala letters or Sinhala phonetics");
+        }
       } catch (err) {
         if (err instanceof PolishError && err.blocked) throw err;
-        if (signal.aborted) break;
-        await waitForRetry(err instanceof RateLimitError ? 5000 : 1500, signal).catch(() => {});
+        if (signal.aborted) throw err;
+        const temporary = err instanceof RateLimitError || (err instanceof PolishError && /HTTP (?:408|5\d\d)/.test(err.message));
+        if (!temporary) onlyTemporary = false;
+        if (temporary) {
+          const waitMs = err instanceof RateLimitError ? err.retryAfterMs : Math.max(5000, (err instanceof PolishError ? err.retryAfterSeconds : 0) * 1000);
+          cooldown.set(key, Math.max(cooldown.get(key) ?? 0, Date.now() + waitMs));
+          log(`  Gemini leftover retry: key cooling for ${Math.ceil(waitMs / 1000)}s — rotating (cues ${first.id}–${last.id})`);
+        } else if (k < keys.length * 2 - 1) {
+          await waitForRetry(1500, signal);
+        }
       }
     }
-    for (const t of group) result.set(t.id, ok?.get(t.id) ?? (t.si.trim() ? t.si : t.en));
+    for (const t of group) {
+      result.set(t.id, ok?.get(t.id) ?? (t.si.trim() ? t.si : t.en));
+      if (!ok && onlyTemporary) temporaryIds.add(t.id);
+    }
   }
-  return result;
+  return { cues: result, temporaryIds };
 }
 
 /**
  * Pre-publish gate: every cue with real English words must come out in Sinhala.
  * Leftovers get one more small-group pass; if any remain, nothing is published.
  */
-async function ensureAllSinhala(english: Cue[], out: Cue[], pairs: Pair[], keys: string[], log: Log, generate?: Generate) {
+async function ensureAllSinhala(english: Cue[], out: Cue[], pairs: Pair[], keys: string[], log: Log, generate?: Generate, cooldown = new Map<string, number>(), onChunkDone?: (cues: [number, string][]) => void) {
   let missing = findUntranslatedCues(english, out);
   if (!missing.length) {
     log(`  ✓ English vs Sinhala check: all ${english.length} cues are in Sinhala`);
@@ -911,11 +950,23 @@ async function ensureAllSinhala(english: Cue[], out: Cue[], pairs: Pair[], keys:
   }
   log(`  English vs Sinhala check: ${missing.length} cue(s) still English — re-translating`);
   const controller = new AbortController();
-  const fixed = await polishInSmallGroups(keys, missing.map((id) => pairs[id - 1]!), pairs, controller.signal, log, 0, generate);
-  for (const [id, text] of fixed) if (/[\u0D80-\u0DFF]/.test(text)) out[id - 1]!.text = cleanSinhalaText(text);
+  const targets = missing.flatMap((id) => {
+    const pair = pairs[id - 1];
+    return pair ? [{ ...pair, si: out[id - 1]?.text ?? "" }] : [];
+  });
+  const fixed = await polishInSmallGroups(keys, targets, pairs, controller.signal, log, 0, generate, cooldown, true);
+  const updated: [number, string][] = [];
+  for (const [id, text] of fixed.cues) {
+    const cue = out[id - 1];
+    if (cue && /[\u0D80-\u0DFF]/.test(text)) {
+      cue.text = cleanSinhalaText(text);
+      updated.push([id, cue.text]);
+    }
+  }
+  if (updated.length) onChunkDone?.(updated);
   missing = findUntranslatedCues(english, out);
   if (missing.length) {
-    throw new PolishError(`${missing.length} cue(s) still in English (e.g. #${missing.slice(0, 8).join(", #")}) — not published`);
+    throw new FinalReviewError(`${missing.length} cue(s) still in English (e.g. #${missing.slice(0, 8).join(", #")}) — not published`, 0, english.length, out, missing.every((id) => fixed.temporaryIds.has(id)));
   }
   log(`  ✓ English vs Sinhala check: all ${english.length} cues are in Sinhala`);
 }

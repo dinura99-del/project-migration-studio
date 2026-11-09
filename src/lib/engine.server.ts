@@ -1556,9 +1556,9 @@ async function processJob(sb: SupabaseClient, s: Settings, j: any, log: Log, opt
     let cachedPolished = opts.cachedPolishedCues;
     if (!cachedPolished) {
       const cp = parseSrt(await read(`qa-checkpoint/${existingPath}`));
-      if (cp.length === enCues.length && cp.every((c, i) => c.time === enCues[i]?.time)) {
+      if (cp.length === enCues.length && cp.every((c, i) => c.index === enCues[i]?.index && c.time === enCues[i]?.time)) {
         cachedPolished = Object.fromEntries(cp.map((c, i) => [String(i + 1), c.text]));
-        log(`  restored ${cp.length} polished cues from QA checkpoint — only the final review will run again`);
+        log(`  restored ${cp.length} polished cues from QA checkpoint — retrying unfinished lines and final review without re-polishing`);
       }
     }
     log(`  stage 2: polishing via Multi-Key Gemini Engine (${geminiKeys().length} key(s) active)…`);
@@ -1588,17 +1588,18 @@ async function processJob(sb: SupabaseClient, s: Settings, j: any, log: Log, opt
     return "completed";
   } catch (e) {
     if (e instanceof FinalReviewError && e.temporary) {
-      // QA waiting: keep the polished work, retry only the final review soon. Not a human-review case.
+      // Keep completed work when leftover translation or final QA hits quota/overload.
       const cpPath = `qa-checkpoint/${j.media_type === "movie" ? `movies/${j.tmdb_id}.si.srt` : `tv/${j.tmdb_id}/s${j.season_number}e${j.episode_number}.si.srt`}`;
-      const up = await sb.storage.from(s.bucket).upload(cpPath, new Blob([buildSrt(e.cues)], { type: "application/x-subrip" }), { upsert: true, contentType: "application/x-subrip" });
+      opts.onPolishedChunk?.(e.cues.map((cue, i) => [i + 1, cue.text]));
+      const up = await sb.storage.from(s.bucket).upload(cpPath, new Blob([sanitizeSinhalaSrt(buildSrt(e.cues))], { type: "application/x-subrip" }), { upsert: true, contentType: "application/x-subrip" });
       await set({
         status: "failed",
         attempts,
         next_retry_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
-        error_log: `[QA_WAITING] ${e.message} — Gemini busy/quota; final review retries in 30 min`,
+        error_log: `[QA_WAITING] ${e.message} — Gemini busy/quota; unfinished lines and final review retry in 30 min`,
         srt_preview: sanitizeSinhalaSrt(buildSrt(e.cues)).slice(0, 4000),
       });
-      log(`  ⏸ QA waiting: ${up.error ? "checkpoint save failed, " : "polished cues saved, "}final review retries in 30 min`);
+      log(`  ⏸ QA waiting: ${up.error ? "checkpoint save failed, " : "polished cues saved, "}unfinished lines and final review retry in 30 min`);
       return "qa_waiting";
     }
     if (e instanceof FinalReviewError) {
