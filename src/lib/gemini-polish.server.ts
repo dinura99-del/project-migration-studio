@@ -2,6 +2,11 @@ type Cue = { index: string; time: string; text: string };
 type Pair = { id: number; en: string; si: string };
 type Log = (message: string) => void;
 
+function configuredMaxWorkers(keyCount: number, override?: number): number {
+  const configured = Number(process.env["GEMINI_MAX_WORKERS"]);
+  return Math.max(1, override ?? (configured > 0 ? configured : Math.min(keyCount, 7)));
+}
+
 export const POLISH_INSTRUCTIONS = `You are a Sri Lankan subtitle writer who writes Sinhala dialogue the way real Sri Lankans actually talk to each other (කතා කරන සිංහල), like a good local teledrama or film dub — never bookish written Sinhala (ලිඛිත / පොතේ සිංහල).
 Translate the English line (en) into natural spoken Sinhala. If a machine draft (si) is present, use it only as a hint and rewrite it freely into spoken Sinhala; if si is empty, translate en directly.
 SPOKEN STYLE (most important):
@@ -336,7 +341,7 @@ export async function runFinalQAAudit(
     log("  ⚠ Final review incomplete: no Gemini keys available");
     return { passed: false, checked: 0, corrected: 0, summary: "Skipped (no Gemini keys available)" };
   }
-  const model = options.model || process.env["GEMINI_POLISH_MODEL"]?.trim() || "gemini-3.5-flash-lite";
+  const model = options.model || process.env["GEMINI_POLISH_MODEL"]?.trim() || "gemini-3.1-flash-lite";
 
   const lines = english
     .map((cue, i) => ({ id: i + 1, en: cue.text, si: polished[i]?.text ?? "" }))
@@ -346,7 +351,7 @@ export async function runFinalQAAudit(
 
   let corrected = 0, reviewed = 0, next = 0, temporaryFailures = 0, failedBatches = 0;
   const summaries: string[] = [];
-  const workers = Math.max(1, Math.min(keys.length, batches.length, 4));
+  const workers = Math.max(1, Math.min(keys.length, batches.length, configuredMaxWorkers(keys.length)));
   await Promise.all(Array.from({ length: workers }, async (_, w) => {
     while (next < batches.length) {
       const b = next++;
@@ -521,7 +526,7 @@ export class RateLimitError extends PolishError {
 }
 
 export async function generatePolish(key: string, targets: Pair[], context: Pair[], signal: AbortSignal, log: Log = () => {}, strictSinhala = false): Promise<string> {
-  const model = process.env["GEMINI_POLISH_MODEL"]?.trim() || "gemini-3.5-flash-lite";
+  const model = process.env["GEMINI_POLISH_MODEL"]?.trim() || "gemini-3.1-flash-lite";
   if (!/^gemini-[a-z0-9.-]*flash[a-z0-9.-]*$/.test(model)) throw new PolishError("GEMINI_POLISH_MODEL must be a Gemini Flash model", true);
   // Retry once per model on 503 overload only, using the same key and exact cue payload.
   const models = [...new Set([model, "gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.5-flash", "gemini-3.6-flash"])];
@@ -695,8 +700,12 @@ export async function polishCues(english: Cue[], sinhala: Cue[], log: Log, optio
     log("  Gemini polish complete — all cues were cached, trivial or music, original timestamps preserved");
   }
 
+  // Default to max 7 active workers so extra keys remain available for 429 rotation.
+  const maxWorkers = configuredMaxWorkers(keys.length, options.maxWorkers);
+  const workerSlots = Math.max(1, Math.min(keys.length, maxWorkers, dialoguePairs.length));
   const defaultChunkSize = Number(process.env["GEMINI_CHUNK_SIZE"]) || 50;
-  const size = Math.max(1, Math.min(75, options.chunkSize ?? defaultChunkSize));
+  const configuredChunkSize = Math.max(1, Math.min(75, options.chunkSize ?? defaultChunkSize));
+  const size = Math.min(configuredChunkSize, Math.max(1, Math.ceil(dialoguePairs.length / workerSlots)));
   const chunks: Pair[][] = [];
   let chunk: Pair[] = [], chars = 0;
   for (const pair of dialoguePairs) {
@@ -706,10 +715,6 @@ export async function polishCues(english: Cue[], sinhala: Cue[], log: Log, optio
   }
   if (chunk.length) chunks.push(chunk);
   if (chunks.length > 200) throw new PolishError("Subtitle exceeds polish run limit (200 chunks) — nothing published");
-  const envMaxWorkers = Number(process.env["GEMINI_MAX_WORKERS"]);
-  // Default to max 7 active workers so extra keys (e.g. with 10 or 11 keys, 3-4 remain on standby)
-  // are preserved as fresh backup for instant 429 rotation without hitting project RPM limits.
-  const maxWorkers = Math.max(1, options.maxWorkers ?? (envMaxWorkers > 0 ? envMaxWorkers : Math.min(keys.length, 7)));
   const workers = Math.min(keys.length, chunks.length, maxWorkers);
   const controller = new AbortController();
   let next = 0, done = skippedLyrics + restoredFromCache + matchedTM + skippedTrivial, failure: unknown;

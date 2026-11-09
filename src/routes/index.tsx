@@ -1152,6 +1152,25 @@ function ActionCard({ title, desc, onClick, busy, disabled }: { title: string; d
 type Job = Awaited<ReturnType<typeof listJobs>>[number];
 const fmt = (d?: string | null) => (d ? new Date(d).toLocaleString() : "—");
 
+function orderQueueRowsForDisplay(rows: Job[]): Job[] {
+  const groups = new Map<string, Job[]>();
+  for (const row of rows) {
+    const key = row.media_type === "tv" ? `tv:${row.tmdb_id}` : `job:${row.id}`;
+    const group = groups.get(key);
+    if (group) group.push(row);
+    else groups.set(key, [row]);
+  }
+
+  return Array.from(groups.values()).flatMap((group) => {
+    if (group.length < 2 || group[0]?.media_type !== "tv") return group;
+    return [...group].sort(
+      (left, right) =>
+        Number(left.season_number ?? 0) - Number(right.season_number ?? 0) ||
+        Number(left.episode_number ?? 0) - Number(right.episode_number ?? 0),
+    );
+  });
+}
+
 function Queue({ k }: { k: string }) {
   const [status, setStatus] = useState("all");
   const [q, setQ] = useState("");
@@ -1236,6 +1255,7 @@ function Queue({ k }: { k: string }) {
   };
 
   const completedCount = rows.filter((r) => r.status === "completed").length;
+  const displayRows = orderQueueRowsForDisplay(rows);
 
   return (
     <div className="space-y-4">
@@ -1305,7 +1325,7 @@ function Queue({ k }: { k: string }) {
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => (
+            {displayRows.map((r) => (
               <tr key={r.id} className="border-t border-border align-top hover:bg-muted/30 transition-colors">
                 <td className="px-4 py-3">
                   <input

@@ -9,6 +9,13 @@ const pairs = [{ id: 1, en: "Hello", si: "ආයුබෝවන්" }, { id: 2, 
 describe("Gemini overload recovery", () => {
   afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
   const success = () => Response.json({ candidates: [{ finishReason: "STOP", content: { parts: [{ text: JSON.stringify({ cues: pairs.map((p) => ({ id: p.id, text: p.si })) }) }] } }] });
+  it("uses Gemini 3.1 Flash Lite by default", async () => {
+    vi.stubEnv("GEMINI_POLISH_MODEL", "");
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL) => success());
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(generatePolish("test", pairs, [], new AbortController().signal)).resolves.toContain("ආයුබෝවන්");
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/models/gemini-3.1-flash-lite:generateContent");
+  });
   it("retries the same model after exactly two seconds on 503", async () => {
     vi.useFakeTimers(); vi.stubEnv("GEMINI_POLISH_MODEL", "gemini-3.5-flash-lite");
     const fetchMock = vi.fn().mockResolvedValueOnce(new Response(null, { status: 503 })).mockImplementation(async () => success());
@@ -200,13 +207,15 @@ describe("Gemini subtitle polish", () => {
     expect(result.map((cue) => cue.index)).toEqual(["7", "9"]);
   });
   it("scales up to 7 workers when 7 keys are provided", async () => {
-    vi.stubEnv("GEMINI_MAX_WORKERS", "");
+    vi.stubEnv("GEMINI_MAX_WORKERS", "7");
+    vi.stubEnv("GEMINI_CHUNK_SIZE", "75");
     let active = 0, peak = 0;
     const testKeys = ["k1", "k2", "k3", "k4", "k5", "k6", "k7"];
-    const testEn = Array.from({ length: 7 }, (_, i) => ({ index: String(i + 1), time: `00:00:0${i},000 --> 00:00:0${i},999`, text: `Line ${i + 1}` }));
+    const testEn = Array.from({ length: 70 }, (_, i) => ({ index: String(i + 1), time: `00:00:${String(i).padStart(2, "0")},000 --> 00:00:${String(i).padStart(2, "0")},999`, text: `Line number ${i + 1} here` }));
     const testSi = testEn.map((cue) => ({ ...cue, text: "සිංහල" }));
-    await polishCues(testEn, testSi, () => {}, {
-      keys: testKeys, chunkSize: 1, pauseMs: 0,
+    const logs: string[] = [];
+    await polishCues(testEn, testSi, (message) => logs.push(message), {
+      keys: testKeys, pauseMs: 0,
       generate: async (_, targets) => {
         active++; peak = Math.max(peak, active);
         await new Promise((r) => setTimeout(r, 15)); active--;
@@ -214,6 +223,8 @@ describe("Gemini subtitle polish", () => {
       },
     });
     expect(peak).toBe(7);
+    expect(logs.some((message) => /Gemini Flash polish: \d+ chunks, 7 parallel worker\(s\)/.test(message))).toBe(true);
+    vi.unstubAllEnvs();
   });
   it("halts on denial without switching credentials or publishing partial work", async () => {
     let calls = 0;
