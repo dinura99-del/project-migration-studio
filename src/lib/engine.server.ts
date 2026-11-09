@@ -1595,11 +1595,11 @@ async function processJob(sb: SupabaseClient, s: Settings, j: any, log: Log, opt
       await set({
         status: "failed",
         attempts,
-        next_retry_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
-        error_log: `[QA_WAITING] ${e.message} — Gemini busy/quota; unfinished lines and final review retry in 30 min`,
+        next_retry_at: new Date(Date.now() + 60 * 1000).toISOString(),
+        error_log: `[QA_WAITING] ${e.message} — Gemini busy/quota; unfinished lines and final review retry in 1 min`,
         srt_preview: sanitizeSinhalaSrt(buildSrt(e.cues)).slice(0, 4000),
       });
-      log(`  ⏸ QA waiting: ${up.error ? "checkpoint save failed, " : "polished cues saved, "}unfinished lines and final review retry in 30 min`);
+      log(`  ⏸ QA waiting: ${up.error ? "checkpoint save failed, " : "polished cues saved, "}unfinished lines and final review retry in 1 min`);
       return "qa_waiting";
     }
     if (e instanceof FinalReviewError) {

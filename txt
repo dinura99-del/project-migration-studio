@@ -1,0 +1,386 @@
+OnFlix Subtitle Automation
+Sign out
+Overview
+Live Queue
+User Requests
+AI Co-Pilot
+TMDB Lookup
+API Keys & Quota
+Analytics & Insights
+Subtitle Sync Editor
+Filters & Scanner
+API & Cron
+Total jobs
+
+101
+
+Upcoming
+
+16
+
+Waiting for Video
+
+0
+
+Waiting for Subtitle
+
+0
+
+Processing
+
+1
+
+Needs Review
+
+0
+
+Completed
+
+84
+
+Failed
+
+0
+
+Scan Trending Now
+Stage 1 — discover trending & upcoming releases from TMDB and queue new jobs.
+
+Run now
+Process Batch Now
+Stage 2 — check video, fetch English SRT, translate to Sinhala and publish.
+
+Run now
+Manual Process by TMDB ID
+Fetch, clean, translate and publish a single title right now.
+
+Movie
+TV Show
+TMDB ID
+70523
+Season from
+1
+to (optional)
+1
+Episode from
+5
+to (optional)
+8
+
+Processing…
+
+Stop
+Season 3: 8 episodes released
+Episode 3/4 · Step 6 of 8
+⏱ 5:09
+
+Stop
+E5 ✓
+E6 ✓
+E7
+E8
+✓
+TMDB details
+✓
+Video check
+✓
+English subtitle
+✓
+Cleaning
+✓
+Translating to Sinhala
+100%
+6
+Gemini Sinhala polish
+86%
+322 / 377 cues· 1 of 7 workers active
+1:10 elapsed · ~0:11 left
+Worker 1
+Done
+56 cues
+Worker 2
+Done
+59 cues
+Worker 3
+Rotating
+0 cues
+Worker 4
+Done
+52 cues
+Worker 5
+Done
+52 cues
+Worker 6
+Done
+55 cues
+Worker 7
+Done
+48 cues
+7
+Uploading
+8
+Publishing
+━━ S1E5 (1/4) ━━
+Fetching TMDB metadata for tv 70523…
+Found: Dark S1E5
+▶ Dark S1E5
+  checking video on EmbedMaster…
+  found 13 playable source(s) (7 embed, 6 premium)
+  fetching English SRT (SubDL → Wyzie)…
+  SubDL: 10 English result(s)
+  SubDL key 1 daily limit reached, switching to key 2…
+  SubDL: 10 English result(s)
+  found English SRT on SubDL (key 2)
+  cleaned watermarks/ads (0 cues removed)
+  restored Sinhala translation from local cache (384 cues)
+  stage 2: polishing via Multi-Key Gemini Engine (18 key(s) active)…
+  resumed polish: 330 cue(s) restored from cache
+  Gemini Flash polish: 7 chunks, 7 parallel worker(s); English/Sinhala comparison
+
+  polished 338/384 cues
+
+  polished 346/384 cues
+
+  polished 354/384 cues
+
+  polished 362/384 cues
+
+  polished 368/384 cues
+
+  polished 376/384 cues
+  Gemini polish cue validation retry (cues 243–251)
+
+  polished 384/384 cues
+  ✓ Subtitle Timing & Dialogue Integrity Check: 100% verified (384/384 cues, 0 timing drift, exact 1:1 dialogue alignment)
+  ✓ English vs Sinhala check: all 384 cues are in Sinhala
+  final check: comparing every English line with its Sinhala line…
+  final review fixed cue 382: The Sinhala translation means 'Can I do a help?' instead of 'Can I help you?'
+  final review fixed cue 384: Unnatural phrasing for credits.
+  final review fixed cue 191: Unnatural bookish Sinhala
+  final review fixed cue 209: Unnatural bookish Sinhala
+  final review fixed cue 220: Robotic word-for-word phrasing
+  final review fixed cue 235: Unnatural bookish Sinhala
+  final review fixed cue 240: Robotic word-for-word phrasing
+  final review fixed cue 89: 'Sure' in this context is better translated as 'අනිවාර්යයෙන්ම' or 'හරි' rather than the transliterated 'ෂුවර්'.
+  final review fixed cue 107: 'Follow' is better translated as 'පස්සෙන් එන්නද' for natural flow.
+  final review fixed cue 25: Typo 'ආයෙත්' (again) instead of 'එයාට' (he had/to him)
+  final review fixed cue 30: Redundant word 'හරි'
+  ✓ Final review: 367/367 spoken lines compared with English — 11 fixed
+  ✓ English vs Sinhala check: all 384 cues are in Sinhala
+
+  added OnFlix watermark (start + end)
+  watermark check: OK
+  uploading to storage…
+  publishing to OnFlix…
+  trending sync: 6 featured, top10 movies 3, tv 3
+  ✓ OnFlix web cache revalidated instantly (tv: dark-70523)
+  ✓ completed — https://yubkmyokvjlyhnsdgyrf.supabase.co/storage/v1/object/public/subtitles/tv/70523/s1e5.si.srt
+  + Auto-queued next episode: Dark S1E6 (waiting_embed)
+━━ S1E6 (2/4) ━━
+Fetching TMDB metadata for tv 70523…
+Found: Dark S1E6
+▶ Dark S1E6
+  checking video on EmbedMaster…
+  found 10 playable source(s) (4 embed, 6 premium)
+  fetching English SRT (SubDL → Wyzie)…
+  SubDL: 10 English result(s)
+  SubDL key 1 daily limit reached, switching to key 2…
+  SubDL: 10 English result(s)
+  found English SRT on SubDL (key 2)
+  cleaned watermarks/ads (0 cues removed)
+  stage 1: free Google Translate draft (394 cues)…
+  Google Translate: 16 batch request(s), 0 per-cue fallback(s)
+  Google draft ready: 393/394 cues (rest translated by Gemini)
+
+  stage 2: polishing via Multi-Key Gemini Engine (18 key(s) active)…
+
+  matched 1 cue(s) via Subtitle Translation Memory (instant 0s)
+  optimized 11 trivial / numeric cue(s) via Rule Engine (bypassed AI, saved quota)
+  Gemini Flash polish: 7 chunks, 7 parallel worker(s); English/Sinhala comparison
+  Gemini 429 on key …x1JD3Q; cooling 11s for all workers → fresh key …GtyS6g (cues 172–228)
+  Gemini 429 on key …XSwTCQ; cooling 11s for all workers → fresh key …GtyS6g (cues 112–171)
+  Gemini 429 on key …GtyS6g; cooling 12s for all workers → fresh key …J9IAtI (cues 172–228)
+  Gemini 429 on key …GtyS6g; cooling 12s for all workers → fresh key …J9IAtI (cues 112–171)
+  Gemini 429 on key …J9IAtI; cooling 13s for all workers → fresh key …50OMGA (cues 172–228)
+  Gemini 429 on key …J9IAtI; cooling 13s for all workers → fresh key …50OMGA (cues 112–171)
+  Gemini 429 on key …50OMGA; cooling 14s for all workers → fresh key …xdoMCQ (cues 112–171)
+
+  polished 67/394 cues
+
+  polished 119/394 cues
+
+  polished 174/394 cues
+
+  polished 229/394 cues
+
+  polished 284/394 cues
+
+  polished 339/394 cues
+
+  polished 394/394 cues
+  ✓ Subtitle Timing & Dialogue Integrity Check: 100% verified (394/394 cues, 0 timing drift, exact 1:1 dialogue alignment)
+  ✓ English vs Sinhala check: all 394 cues are in Sinhala
+  final check: comparing every English line with its Sinhala line…
+  final review fixed cue 163: Unnatural formal 'නැත' in casual conversation.
+  final review fixed cue 172: 'රවට්ටලා ගියා' is not accurate for 'stood me up'.
+  final review fixed cue 391: Unnatural phrasing for the context
+  final review fixed cue 392: Robotic word-for-word translation
+  ✓ Final review: 367/367 spoken lines compared with English — 4 fixed
+  ✓ English vs Sinhala check: all 394 cues are in Sinhala
+
+  added OnFlix watermark (start + end)
+  watermark check: OK
+  uploading to storage…
+  publishing to OnFlix…
+  trending sync: 6 featured, top10 movies 3, tv 3
+  ✓ OnFlix web cache revalidated instantly (tv: dark-70523)
+  ✓ completed — https://yubkmyokvjlyhnsdgyrf.supabase.co/storage/v1/object/public/subtitles/tv/70523/s1e6.si.srt
+  + Auto-queued next episode: Dark S1E7 (waiting_embed)
+━━ S1E7 (3/4) ━━
+Fetching TMDB metadata for tv 70523…
+Found: Dark S1E7
+▶ Dark S1E7
+  checking video on EmbedMaster…
+  found 10 playable source(s) (4 embed, 6 premium)
+  fetching English SRT (SubDL → Wyzie)…
+  SubDL: 10 English result(s)
+  SubDL key 1 daily limit reached, switching to key 2…
+  SubDL: 10 English result(s)
+  found English SRT on SubDL (key 2)
+  cleaned watermarks/ads (0 cues removed)
+  stage 1: free Google Translate draft (377 cues)…
+  Google Translate: 16 batch request(s), 0 per-cue fallback(s)
+  Google draft ready: 376/377 cues (rest translated by Gemini)
+
+  stage 2: polishing via Multi-Key Gemini Engine (18 key(s) active)…
+
+  optimized 18 trivial / numeric cue(s) via Rule Engine (bypassed AI, saved quota)
+  Gemini Flash polish: 7 chunks, 7 parallel worker(s); English/Sinhala comparison
+  Gemini 429 on key …vSozZw; cooling 11s for all workers → fresh key …vm9pVg (cues 1–56)
+  Gemini 429 on key …vm9pVg; cooling 11s for all workers → fresh key …XSwTCQ (cues 59–117)
+  Gemini 429 on key …XSwTCQ; cooling 11s for all workers → fresh key …x1JD3Q (cues 118–170)
+  Gemini 429 on key …XSwTCQ; cooling 12s for all workers → fresh key …x1JD3Q (cues 1–56)
+  Gemini 429 on key …x1JD3Q; cooling 11s for all workers → fresh key …GtyS6g (cues 171–222)
+  Gemini 429 on key …XSwTCQ; cooling 12s for all workers → fresh key …GtyS6g (cues 59–117)
+  Gemini 429 on key …GtyS6g; cooling 11s for all workers → fresh key …J9IAtI (cues 223–274)
+  Gemini 429 on key …x1JD3Q; cooling 12s for all workers → fresh key …J9IAtI (cues 118–170)
+  Gemini 429 on key …J9IAtI; cooling 11s for all workers → fresh key …50OMGA (cues 275–329)
+  Gemini 429 on key …GtyS6g; cooling 13s for all workers → fresh key …50OMGA (cues 1–56)
+  Gemini 429 on key …GtyS6g; cooling 12s for all workers → fresh key …50OMGA (cues 171–222)
+  Gemini 429 on key …50OMGA; cooling 11s for all workers → fresh key …xdoMCQ (cues 330–377)
+  Gemini 429 on key …J9IAtI; cooling 13s for all workers → fresh key …xdoMCQ (cues 59–117)
+  Gemini 429 on key …50OMGA; cooling 12s for all workers → fresh key …xdoMCQ (cues 223–274)
+  Gemini 429 on key …50OMGA; cooling 13s for all workers → fresh key …xdoMCQ (cues 118–170)
+  Gemini 429 on key …50OMGA; cooling 14s for all workers → fresh key …xdoMCQ (cues 1–56)
+  Gemini 429 on key …50OMGA; cooling 12s for all workers → fresh key …xdoMCQ (cues 275–329)
+  Gemini 429 on key …xdoMCQ; cooling 13s for all workers → fresh key …ECqx2w (cues 171–222)
+  Gemini 429 on key …xdoMCQ; cooling 12s for all workers → fresh key …ECqx2w (cues 330–377)
+  Gemini 429 on key …xdoMCQ; cooling 14s for all workers → fresh key …ECqx2w (cues 59–117)
+  Gemini 429 on key …xdoMCQ; cooling 13s for all workers → fresh key …ECqx2w (cues 223–274)
+  Gemini 429 on key …xdoMCQ; cooling 14s for all workers → fresh key …ECqx2w (cues 118–170)
+  Gemini 429 on key …ECqx2w; cooling 15s for all workers → fresh key …ULsOKg (cues 1–56)
+  Gemini 429 on key …ECqx2w; cooling 13s for all workers → fresh key …ULsOKg (cues 275–329)
+  Gemini 429 on key …ECqx2w; cooling 14s for all workers → fresh key …ULsOKg (cues 171–222)
+  Gemini 429 on key …ULsOKg; cooling 13s for all workers → fresh key …9uw-hw (cues 330–377)
+  Gemini 429 on key …ULsOKg; cooling 15s for all workers → fresh key …9uw-hw (cues 59–117)
+  Gemini 429 on key …ULsOKg; cooling 14s for all workers → fresh key …9uw-hw (cues 223–274)
+  Gemini 429 on key …ULsOKg; cooling 15s for all workers → fresh key …9uw-hw (cues 118–170)
+  Gemini 429 on key …ULsOKg; cooling 14s for all workers → fresh key …9uw-hw (cues 275–329)
+  Gemini 429 on key …ULsOKg; cooling 15s for all workers → fresh key …9uw-hw (cues 1–56)
+  Gemini 429 on key …9uw-hw; cooling 15s for all workers → fresh key …FLM2Nw (cues 171–222)
+  Gemini 429 on key …9uw-hw; cooling 14s for all workers → fresh key …FLM2Nw (cues 330–377)
+  Gemini 429 on key …9uw-hw; cooling 15s for all workers → fresh key …FLM2Nw (cues 59–117)
+  Gemini 429 on key …9uw-hw; cooling 15s for all workers → fresh key …FLM2Nw (cues 223–274)
+  Gemini 429 on key …FLM2Nw; cooling 15s for all workers → fresh key …RcQVaA (cues 275–329)
+  Gemini 429 on key …FLM2Nw; cooling 15s for all workers → fresh key …RcQVaA (cues 1–56)
+  Gemini 429 on key …RcQVaA; cooling 15s for all workers → fresh key …xI577w (cues 330–377)
+  Gemini 429 on key …RcQVaA; cooling 15s for all workers → fresh key …xI577w (cues 59–117)
+  Gemini 429 on key …RcQVaA; cooling 15s for all workers → fresh key …xI577w (cues 223–274)
+  Gemini 429 on key …RcQVaA; cooling 15s for all workers → fresh key …xI577w (cues 275–329)
+  Gemini 429 on key …RcQVaA; cooling 15s for all workers → fresh key …xI577w (cues 1–56)
+  Gemini 429 on key …xI577w; cooling 15s for all workers → fresh key …siU5nQ (cues 330–377)
+  Gemini 429 on key …xI577w; cooling 15s for all workers → fresh key …siU5nQ (cues 59–117)
+  Gemini 429 on key …xI577w; cooling 15s for all workers → fresh key …siU5nQ (cues 223–274)
+  Gemini 429 on key …xI577w; cooling 15s for all workers → fresh key …siU5nQ (cues 275–329)
+  Gemini 429 on key …xI577w; cooling 15s for all workers → fresh key …siU5nQ (cues 1–56)
+  Gemini 429 on key …siU5nQ; cooling 15s for all workers → fresh key …TcgC0Q (cues 330–377)
+  Gemini 429 on key …siU5nQ; cooling 15s for all workers → fresh key …TcgC0Q (cues 223–274)
+  Gemini 429 on key …siU5nQ; cooling 15s for all workers → fresh key …TcgC0Q (cues 59–117)
+  Gemini 429 on key …siU5nQ; cooling 15s for all workers → fresh key …TcgC0Q (cues 275–329)
+  Gemini 429 on key …siU5nQ; cooling 15s for all workers → fresh key …TcgC0Q (cues 1–56)
+  Gemini 429 on key …TcgC0Q; cooling 15s for all workers → fresh key …MtNbOw (cues 330–377)
+  Gemini polish cue validation retry (cues 118–170)
+  Gemini 429 on key …TcgC0Q; cooling 15s for all workers → fresh key …MtNbOw (cues 59–117)
+  Gemini 429 on key …TcgC0Q; cooling 15s for all workers → fresh key …MtNbOw (cues 223–274)
+  Gemini 429 on key …TcgC0Q; cooling 15s for all workers → fresh key …MtNbOw (cues 275–329)
+  Gemini 429 on key …TcgC0Q; cooling 15s for all workers → fresh key …MtNbOw (cues 1–56)
+
+  polished 70/377 cues
+  Gemini 429 on key …MtNbOw; cooling 15s for all workers → fresh key …eFzDMQ (cues 59–117)
+  Gemini 429 on key …9uw-hw; cooling 15s for all workers → fresh key …eFzDMQ (cues 118–170)
+  Gemini 429 on key …MtNbOw; cooling 15s for all workers → fresh key …eFzDMQ (cues 1–56)
+  Gemini 429 on key …MtNbOw; cooling 15s for all workers → fresh key …eFzDMQ (cues 223–274)
+  Gemini 429 on key …eFzDMQ; cooling 15s for all workers → fresh key …vSozZw (cues 59–117)
+  Gemini 429 on key …eFzDMQ; cooling 15s for all workers → fresh key …vSozZw (cues 118–170)
+  Gemini 429 on key …eFzDMQ; cooling 15s for all workers → fresh key …vSozZw (cues 223–274)
+  Gemini 429 on key …eFzDMQ; cooling 15s for all workers → fresh key …vSozZw (cues 1–56)
+
+  polished 117/377 cues
+  Gemini 429 on key …vSozZw; cooling 15s for all workers → fresh key …vm9pVg (cues 59–117)
+  Gemini 429 on key …vSozZw; cooling 15s for all workers → fresh key …vm9pVg (cues 223–274)
+  Gemini 429 on key …vSozZw; cooling 15s for all workers → fresh key …vm9pVg (cues 118–170)
+  Gemini 429 on key …vSozZw; cooling 15s for all workers → fresh key …vm9pVg (cues 1–56)
+  Gemini 429 on key …vm9pVg; cooling 15s for all workers → fresh key …XSwTCQ (cues 59–117)
+  Gemini 429 on key …vm9pVg; cooling 15s for all workers → fresh key …XSwTCQ (cues 118–170)
+  Gemini 429 on key …vm9pVg; cooling 15s for all workers → fresh key …XSwTCQ (cues 1–56)
+
+  polished 169/377 cues
+  Gemini 429 on key …XSwTCQ; cooling 15s for all workers → fresh key …x1JD3Q (cues 59–117)
+  Gemini 429 on key …XSwTCQ; cooling 15s for all workers → fresh key …x1JD3Q (cues 118–170)
+  Gemini 429 on key …x1JD3Q; cooling 15s for all workers → fresh key …GtyS6g (cues 59–117)
+  Gemini 429 on key …x1JD3Q; cooling 15s for all workers → fresh key …GtyS6g (cues 118–170)
+
+  polished 221/377 cues
+  Gemini 429 on key …GtyS6g; cooling 15s for all workers → fresh key …J9IAtI (cues 59–117)
+  Gemini 429 on key …GtyS6g; cooling 15s for all workers → fresh key …J9IAtI (cues 118–170)
+
+  polished 273/377 cues
+  Gemini 429 on key …J9IAtI; cooling 15s for all workers → fresh key …50OMGA (cues 59–117)
+  Gemini 429 on key …50OMGA; cooling 15s for all workers → fresh key …xdoMCQ (cues 59–117)
+  Gemini 429 on key …xdoMCQ; cooling 15s for all workers → fresh key …ECqx2w (cues 59–117)
+  Gemini 429 on key …ECqx2w; cooling 15s for all workers → fresh key …ULsOKg (cues 59–117)
+  Gemini 429 on key …ULsOKg; cooling 15s for all workers → fresh key …FLM2Nw (cues 59–117)
+  Gemini polish cue validation retry (cues 118–170)
+  Gemini 429 on key …FLM2Nw; cooling 15s for all workers → fresh key …RcQVaA (cues 59–117)
+  Gemini 429 on key …RcQVaA; cooling 15s for all workers → fresh key …xI577w (cues 59–117)
+  Gemini 429 on key …xI577w; cooling 15s for all workers → fresh key …siU5nQ (cues 59–117)
+  Gemini 429 on key …siU5nQ; cooling 15s for all workers → fresh key …TcgC0Q (cues 59–117)
+  Gemini polish chunk retry 2/4 after 2.5s (cues 118–170)
+  Gemini 429 on key …TcgC0Q; cooling 15s for all workers → fresh key …MtNbOw (cues 59–117)
+  Gemini 429 on key …MtNbOw; cooling 15s for all workers → fresh key …eFzDMQ (cues 59–117)
+  Gemini 429 on key …eFzDMQ; cooling 15s for all workers → fresh key …vSozZw (cues 59–117)
+  Gemini 429 on key …vSozZw; cooling 15s for all workers → fresh key …vm9pVg (cues 59–117)
+  Gemini 429 on key …vm9pVg; cooling 15s for all workers → fresh key …XSwTCQ (cues 59–117)
+  Gemini 429 on key …XSwTCQ; cooling 15s for all workers → fresh key …x1JD3Q (cues 59–117)
+  Gemini 429 on key …x1JD3Q; cooling 15s for all workers → fresh key …GtyS6g (cues 59–117)
+  Gemini polish cue validation retry (cues 118–170)
+  Gemini 429 on key …GtyS6g; cooling 15s for all workers → fresh key …J9IAtI (cues 59–117)
+  Gemini 429 on key …9uw-hw; cooling 11s for all workers → fresh key …J9IAtI (cues 118–170)
+  Gemini 429 on key …J9IAtI; cooling 12s for all workers → fresh key …50OMGA (cues 118–170)
+  Gemini 429 on key …50OMGA; cooling 13s for all workers → fresh key …xdoMCQ (cues 118–170)
+  Gemini 429 on key …xdoMCQ; cooling 14s for all workers → fresh key …ECqx2w (cues 118–170)
+
+  polished 325/377 cues
+  Gemini 429 on key …ECqx2w; cooling 15s for all workers → fresh key …ULsOKg (cues 118–170)
+  Gemini 429 on key …ULsOKg; cooling 15s for all workers → fresh key …FLM2Nw (cues 118–170)
+  Gemini 429 on key …FLM2Nw; cooling 15s for all workers → fresh key …RcQVaA (cues 118–170)
+  Gemini 429 on key …RcQVaA; cooling 15s for all workers → fresh key …xI577w (cues 118–170)
+  Gemini 429 on key …xI577w; cooling 15s for all workers → fresh key …siU5nQ (cues 118–170)
+  Gemini 429 on key …siU5nQ; cooling 15s for all workers → fresh key …TcgC0Q (cues 118–170)
+  Gemini 429 on key …TcgC0Q; cooling 15s for all workers → fresh key …MtNbOw (cues 118–170)
+  Gemini 429 on key …MtNbOw; cooling 15s for all workers → fresh key …eFzDMQ (cues 118–170)
+  Gemini 429 on key …eFzDMQ; cooling 15s for all workers → fresh key …vSozZw (cues 118–170)
+  Gemini 429 on key …vSozZw; cooling 15s for all workers → fresh key …vm9pVg (cues 118–170)
+  Gemini 429 on key …vm9pVg; cooling 15s for all workers → fresh key …XSwTCQ (cues 118–170)
+  Gemini 429 on key …XSwTCQ; cooling 15s for all workers → fresh key …x1JD3Q (cues 118–170)
+  Gemini 429 on key …x1JD3Q; cooling 15s for all workers → fresh key …GtyS6g (cues 118–170)
+  Gemini 429 on key …GtyS6g; cooling 15s for all workers → fresh key …J9IAtI (cues 118–170)

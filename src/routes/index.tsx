@@ -36,6 +36,7 @@ const STATUS_META: Record<string, { label: string; cls: string }> = {
   waiting_subtitle: { label: "Waiting for Subtitle", cls: "text-warning bg-warning/10" },
   processing: { label: "Processing", cls: "text-primary bg-primary/10" },
   needs_review: { label: "Needs Review", cls: "text-warning bg-warning/10" },
+  qa_waiting: { label: "QA_WAITING", cls: "text-info bg-info/10" },
   completed: { label: "Completed", cls: "text-success bg-success/10" },
   failed: { label: "Failed", cls: "text-destructive bg-destructive/10" },
 };
@@ -369,7 +370,7 @@ function Overview({
     load();
   };
 
-  const tiles: [string, string][] = [["total", "Total jobs"], ...Object.entries(STATUS_META).map(([s, m]) => [s, m.label] as [string, string])];
+  const tiles: [string, string][] = [["total", "Total jobs"], ...Object.entries(STATUS_META).filter(([s]) => s !== "qa_waiting").map(([s, m]) => [s, m.label] as [string, string])];
   return (
     <div className="space-y-6">
       {err && <Card className="text-sm text-destructive">{err}</Card>}
@@ -770,7 +771,7 @@ function ManualCard({
           } else if (m.startsWith("@@polish_init:")) {
             const [tc, wc, cues] = m.slice(14).split(":").map(Number);
             const totalChunks = tc || 0;
-            const workerCount = wc || 7;
+            const workerCount = wc ?? 1;
             const totalCues = cues || 0;
             setPolishState({
               totalChunks,
@@ -1001,7 +1002,7 @@ function ManualCard({
       {started && (
         <div className="mt-6 animate-in fade-in slide-in-from-top-2 duration-500">
           <div className="flex items-center justify-between text-xs">
-            <span className={busy ? "text-primary font-medium" : final?.ok ? "text-success font-medium" : "text-destructive font-medium"}>
+            <span className={busy ? "text-primary font-medium" : final?.status === "qa_waiting" ? "text-info font-medium" : final?.ok ? "text-success font-medium" : "text-destructive font-medium"}>
               {busy ? `${queue.length > 1 ? `Episode ${queue.findIndex((q) => q.status === "running") + 1}/${queue.length} · ` : ""}Step ${Math.max(step, 0) + 1} of ${STEPS.length}` : STATUS_META[final!.status]?.label ?? final!.status}
             </span>
             <div className="flex items-center gap-2.5">
@@ -1020,7 +1021,7 @@ function ManualCard({
             </div>
           </div>
           <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
-            <div className={`h-full rounded-full transition-all duration-700 ease-out ${failed ? "bg-destructive" : final?.ok ? "bg-success" : "bg-primary"}`}
+            <div className={`h-full rounded-full transition-all duration-700 ease-out ${failed && final?.status !== "qa_waiting" ? "bg-destructive" : final?.ok ? "bg-success" : "bg-primary"}`}
               style={{ width: `${overall}%` }} />
           </div>
 
@@ -1032,15 +1033,16 @@ function ManualCard({
                   : q.status === "running" ? "animate-pulse bg-primary/20 text-primary"
                   : q.status === "todo" ? "bg-muted text-muted-foreground"
                   : q.status === "needs_review" ? "bg-warning/20 text-warning"
+                  : q.status === "qa_waiting" ? "bg-info/20 text-info"
                   : "bg-destructive/20 text-destructive"}`}>
-                  {q.s != null && Number(seasonTo) > Number(season) ? `S${q.s}` : ""}E{q.ep}{q.status === "completed" ? " ✓" : q.status === "needs_review" ? " ⚠" : q.status === "todo" || q.status === "running" ? "" : " ✕"}
+                  {q.s != null && Number(seasonTo) > Number(season) ? `S${q.s}` : ""}E{q.ep}{q.status === "qa_waiting" ? " QA_WAITING" : q.status === "completed" ? " ✓" : q.status === "needs_review" ? " ⚠" : q.status === "todo" || q.status === "running" ? "" : " ✕"}
                 </span>
               ))}
             </div>
           )}
           <ol className="mt-5 space-y-1">
             {STEPS.map((s, i) => {
-              const state = final?.ok || i < step ? "done" : i === step ? (failed ? "fail" : final ? "stop" : "active") : "todo";
+              const state = final?.ok || i < step ? "done" : i === step ? (failed && final?.status !== "qa_waiting" ? "fail" : final ? "stop" : "active") : "todo";
               return (
                 <li key={s.id} className={`flex flex-col rounded-xl px-3 py-2 transition-all duration-500 ${state === "active" ? "bg-secondary/60" : ""} ${state === "todo" ? "opacity-40" : "opacity-100"}`}>
                   <div className="flex items-center gap-3">
@@ -1051,7 +1053,7 @@ function ManualCard({
                       : state === "stop" ? "bg-muted-foreground/40 text-foreground"
                       : "bg-muted text-muted-foreground"}`}>
                       {state === "active" && <span className="absolute inset-0 animate-ping rounded-full bg-primary/40" />}
-                      <span className="relative">{state === "done" ? "✓" : state === "fail" ? "✕" : i + 1}</span>
+                      {state === "done" ? <Check className="relative size-3.5" /> : state === "fail" ? <X className="relative size-3.5" /> : <span className="relative">{i + 1}</span>}
                     </span>
                     <span className={`text-sm ${state === "active" ? "font-medium text-foreground" : "text-muted-foreground"}`}>{s.label}</span>
                     {(s.id === "translate" || s.id === "polish") && pct && state !== "todo" && (
@@ -1150,6 +1152,19 @@ function ActionCard({ title, desc, onClick, busy, disabled }: { title: string; d
 }
 
 type Job = Awaited<ReturnType<typeof listJobs>>[number];
+const fmtCountdown = (d: string | null | undefined, now: number) => {
+  if (!d) return "--:--";
+  const remaining = Date.parse(d) - now;
+  if (!Number.isFinite(remaining)) return "--:--";
+  const totalSeconds = Math.max(0, Math.ceil(remaining / 1000));
+  if (totalSeconds === 0) return "00:00";
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return hours > 0
+    ? `${hours}:${String(minutes % 60).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
+    : `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+};
 const fmt = (d?: string | null) => (d ? new Date(d).toLocaleString() : "—");
 
 function orderQueueRowsForDisplay(rows: Job[]): Job[] {
@@ -1173,6 +1188,7 @@ function orderQueueRowsForDisplay(rows: Job[]): Job[] {
 
 function Queue({ k }: { k: string }) {
   const [status, setStatus] = useState("all");
+  const [clockNow, setClockNow] = useState(Date.now());
   const [q, setQ] = useState("");
   const [rows, setRows] = useState<Job[]>([]);
   const [err, setErr] = useState("");
@@ -1193,6 +1209,7 @@ function Queue({ k }: { k: string }) {
   }).catch((e) => setErr(e.message)), [k, status, q]);
 
   useEffect(() => { const t = setTimeout(load, 250); return () => clearTimeout(t); }, [load]);
+  useEffect(() => { const timer = setInterval(() => setClockNow(Date.now()), 1000); return () => clearInterval(timer); }, []);
 
   const toggleSelectAll = () => {
     if (selected.size === rows.length) {
@@ -1346,10 +1363,15 @@ function Queue({ k }: { k: string }) {
                   <span className={`whitespace-nowrap rounded-lg px-2 py-1 text-xs font-medium ${STATUS_META[r.status]?.cls}`}>
                     {STATUS_META[r.status]?.label ?? r.status}
                   </span>
+                  {r.status === "qa_waiting" && (
+                    <div className="mt-1 text-[11px] font-mono tabular-nums text-info">{fmtCountdown(r.next_retry_at, clockNow)}</div>
+                  )}
                 </td>
                 <td className="px-4 py-3 tabular-nums">{r.attempts}</td>
                 <td className="px-4 py-3 whitespace-nowrap text-xs text-muted-foreground">{fmt(r.next_retry_at)}</td>
-                <td className="max-w-64 px-4 py-3 text-xs text-muted-foreground">{r.error_log ?? "—"}</td>
+                <td className={`max-w-64 px-4 py-3 text-xs ${r.status === "qa_waiting" ? "text-info" : "text-muted-foreground"}`}>
+                  {r.status === "qa_waiting" ? "" : r.error_log ?? "—"}
+                </td>
                 <td className="px-4 py-3 whitespace-nowrap text-right">
                   <div className="flex items-center justify-end gap-2.5">
                     {(r.status === "completed" || r.status === "needs_review") && (
@@ -1360,7 +1382,7 @@ function Queue({ k }: { k: string }) {
                         {r.status === "needs_review" ? "Review draft" : "Preview"}
                       </button>
                     )}
-                    {(r.status === "failed" || r.status === "needs_review" || r.status.startsWith("waiting")) && (
+                    {(r.status === "failed" || r.status === "qa_waiting" || r.status === "needs_review" || r.status.startsWith("waiting")) && (
                       <button
                         className="text-xs text-muted-foreground hover:text-foreground hover:underline"
                         onClick={async () => { await retryJob({ data: { key: k, id: r.id } }); load(); }}

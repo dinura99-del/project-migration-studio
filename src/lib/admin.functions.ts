@@ -39,15 +39,19 @@ export const listJobs = createServerFn({ method: "POST" })
       .order("updated_at", { ascending: false })
       .limit(200);
     if (data.status === "needs_review") q = q.eq("status", "failed").like("error_log", "[NEEDS_REVIEW]%");
-    else if (data.status === "failed") q = q.eq("status", "failed").or("error_log.is.null,error_log.not.like.[NEEDS_REVIEW]%");
+    else if (data.status === "qa_waiting") q = q.eq("status", "failed").like("error_log", "[QA_WAITING]%");
+    else if (data.status === "failed") q = q.eq("status", "failed").or("error_log.is.null,and(error_log.not.like.[NEEDS_REVIEW]%,error_log.not.like.[QA_WAITING]%)");
     else if (data.status !== "all") q = q.eq("status", data.status);
     const t = data.q.trim();
     if (t) q = /^\d+$/.test(t) ? q.eq("tmdb_id", Number(t)) : q.ilike("title", `%${t.replace(/[%,()]/g, "")}%`);
     const { data: rows, error } = await q;
     if (error) throw new Error(error.message);
-    return (rows ?? []).map((row) => row.status === "failed" && row.error_log?.startsWith("[NEEDS_REVIEW]")
-      ? { ...row, status: "needs_review" }
-      : row);
+    return (rows ?? []).map((row) => {
+      if (row.status !== "failed") return row;
+      if (row.error_log?.startsWith("[NEEDS_REVIEW]")) return { ...row, status: "needs_review" };
+      if (row.error_log?.startsWith("[QA_WAITING]")) return { ...row, status: "qa_waiting" };
+      return row;
+    });
   });
 
 export const getPreview = createServerFn({ method: "POST" })

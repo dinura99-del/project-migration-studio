@@ -1,29 +1,15 @@
+import { POLISH_INSTRUCTIONS, AUDIT_INSTRUCTIONS } from "./ai-prompts";
+
+export { POLISH_INSTRUCTIONS, AUDIT_INSTRUCTIONS };
+
 type Cue = { index: string; time: string; text: string };
 type Pair = { id: number; en: string; si: string };
 type Log = (message: string) => void;
 
 function configuredMaxWorkers(keyCount: number, override?: number): number {
   const configured = Number(process.env["GEMINI_MAX_WORKERS"]);
-  return Math.max(1, override ?? (configured > 0 ? configured : Math.min(keyCount, 7)));
+  return Math.max(1, override ?? (configured > 0 ? configured : keyCount));
 }
-
-export const POLISH_INSTRUCTIONS = `You are a Sri Lankan subtitle writer who writes Sinhala dialogue the way real Sri Lankans actually talk to each other (කතා කරන සිංහල), like a good local teledrama or film dub — never bookish written Sinhala (ලිඛිත / පොතේ සිංහල).
-Translate the English line (en) into natural spoken Sinhala. If a machine draft (si) is present, use it only as a hint and rewrite it freely into spoken Sinhala; if si is empty, translate en directly.
-SPOKEN STYLE (most important):
-- Use spoken verb forms: යනවා, එනවා, කියන්නේ, කළා, ගියා, බලන්න, එන්න, යමු, කරපන්, නෑ, නැද්ද?, නේද?, වගේ, ඉතින්, අනේ, අයියෝ, හරි හරි, මොකද්ද, කොහෙද, ඇයි, දැන්.
-- NEVER use written-only forms: -යි/-ෙමි/-ෙහි/-මු endings (කරන්නේය, යමි, ඇත, නොමැත, වේ, කරමින්, ගමන් කරමින්, අතහැරියේය), ඔහු/ඇය/ඔවුහු (use එයා / එයාලා / මිනිහා / කෙල්ල as fits), ඔබ in casual talk (use ඔයා; උඹ between rough friends; polite forms only for formal speech).
-- Pick pronouns from the relationship and tone: friends/siblings → මං/උඹ or මම/ඔයා; parents/teachers/strangers → polite.
-- Translate meaning and feeling, not words. English idioms become the Sinhala expression a local would say. Keep it short enough to read on screen.
-- Keep emotion, humour, sarcasm, swearing strength, negation, tense and numbers.
-LINES THAT ARE NOT SPEECH (still must be Sinhala):
-- Sound/action tags like [door chimes jingle], [laughs nervously], [alarm beeping] → keep the brackets and write them in Sinhala: [දොරේ සීනුව නාද වෙනවා], [බයෙන් හිනාවෙනවා], [ඇලාම් එක නාද වෙනවා].
-- Song lyrics with ♪ → translate the meaning into short, natural Sinhala lines, keeping ♪ and <i></i> exactly. A song title / artist name may stay in English inside a Sinhala sentence, e.g. ["Fade into You" - Mazzy Star ගීතය වාදනය වෙනවා].
-OTHER RULES:
-1. Keep character names, brands and acronyms correct (they may stay in English letters).
-2. Each cue ID is an independent timed line: never merge, split, omit or add cues.
-3. Keep speaker dashes (-), line breaks and inline tags like <i>.
-4. Return JSON ONLY: {"cues":[{"id":1,"text":"සිංහල දෙබස"}]} with exactly one text per target ID. Every text must contain Sinhala; never return the English unchanged.
-5. STRICT SCRIPT INTEGRITY: only Sinhala Unicode plus Latin for names. NEVER output Telugu, Tamil, Kannada, Malayalam, Bengali, Devanagari or any other script.`;
 
 /** True when the English cue has real words that a Sinhala viewer needs translated. */
 export function needsSinhala(enText: string): boolean {
@@ -251,16 +237,6 @@ export function lookupTranslationMemory(enText: string): string | undefined {
   return match;
 }
 
-export const AUDIT_INSTRUCTIONS = `You are the final Sri Lankan subtitle QC editor. You see English (en) and Sinhala (si) side by side for every line before it is published.
-Fix a line ONLY when it has a real problem:
-1. Wrong, reversed or missing meaning compared to English.
-2. Any English left untranslated (except names/brands/song titles).
-3. Bookish written Sinhala (ඇත, නොමැත, කරන්නේය, ඔහු, ඇය, කරමින්, -යි endings, ඔබ in casual talk) — rewrite it as natural spoken Sinhala the way Sri Lankans really talk (යනවා, නෑ, එයා, ඔයා/උඹ, නේද?, අනේ ...).
-4. Robotic word-for-word phrasing a local would never say.
-Keep ♪, <i>, brackets and speaker dashes. Never use any script except Sinhala (plus Latin for names).
-Output JSON only:
-{"summary":"1 sentence","corrections":[{"id":1,"issue":"short reason","fixedText":"fixed spoken Sinhala"}]}
-If every line is fine return {"summary":"Accurate and natural.","corrections":[]}.`;
 
 async function auditBatch(key: string, model: string, batch: { id: number; en: string; si: string }[]): Promise<{ summary?: string; corrections?: { id: number; issue: string; fixedText: string }[] } | null> {
   const controller = new AbortController();
@@ -331,14 +307,14 @@ export async function runFinalQAAudit(
     retryDelayMs?: number | undefined;
   } = {}
 ): Promise<{ passed: boolean; checked: number; corrected: number; summary: string; temporary?: boolean }> {
-  log("  final check: comparing every English line with its Sinhala line…");
+  log("  final check: comparing every English line with its Sinhala line...");
   if (options.isTest) {
-    log(`  ✓ Final review: ${english.length} cues compared with English`);
+    log(`  [OK] Final review: ${english.length} cues compared with English`);
     return { passed: true, checked: english.length, corrected: 0, summary: "Verified" };
   }
   const keys = options.keys ?? geminiKeys();
   if (!keys.length) {
-    log("  ⚠ Final review incomplete: no Gemini keys available");
+    log("  [WARN] Final review incomplete: no Gemini keys available");
     return { passed: false, checked: 0, corrected: 0, summary: "Skipped (no Gemini keys available)" };
   }
   const model = options.model || process.env["GEMINI_POLISH_MODEL"]?.trim() || "gemini-3.1-flash-lite";
@@ -372,7 +348,7 @@ export async function runFinalQAAudit(
           if (status === 503 && overloadRetries < 2 && !options.isTest) {
             const waitMs = 2000 * 2 ** overloadRetries + Math.floor(Math.random() * 1000);
             overloadRetries++;
-            log(`  final review: Gemini busy (503) — retry in ${(waitMs / 1000).toFixed(1)}s`);
+            log(`  final review: Gemini busy (503) - retry in ${(waitMs / 1000).toFixed(1)}s`);
             await auditSleep(options.retryDelayMs ?? waitMs);
             k--; // same key again
           } else if (status === 429) {
@@ -395,7 +371,7 @@ export async function runFinalQAAudit(
       if (!res) {
         failedBatches++;
         if (sawTemporary) temporaryFailures++;
-        log(`  final review: lines ${batch[0]!.id}–${batch.at(-1)!.id} could not be reviewed${sawTemporary ? " (Gemini busy/quota — will retry later)" : ""}`);
+        log(`  final review: lines ${batch[0]!.id}-${batch.at(-1)!.id} could not be reviewed${sawTemporary ? " (Gemini busy/quota - will retry later)" : ""}`);
         continue;
       }
       reviewed += batch.length;
@@ -415,9 +391,9 @@ export async function runFinalQAAudit(
   const summary = summaries[0] ?? "Reviewed";
   const passed = reviewed === lines.length;
   if (passed) {
-    log(`  ✓ Final review: ${reviewed}/${lines.length} spoken lines compared with English — ${corrected} fixed`);
+    log(`  [OK] Final review: ${reviewed}/${lines.length} spoken lines compared with English - ${corrected} fixed`);
   } else {
-    log(`  ⚠ Final review incomplete: only ${reviewed}/${lines.length} spoken lines compared with English — not safe to publish`);
+    log(`  [WARN] Final review incomplete: only ${reviewed}/${lines.length} spoken lines compared with English - not safe to publish`);
   }
   // Temporary only when every unreviewed batch failed because of quota/overload/network.
   const temporary = !passed && temporaryFailures > 0 && temporaryFailures >= failedBatches;
@@ -519,23 +495,69 @@ function waitForRetry(ms: number, signal: AbortSignal): Promise<void> {
 
 // 429 is thrown with a special rate-limit flag so the caller can rotate keys.
 export class RateLimitError extends PolishError {
-  constructor(public readonly retryAfterMs: number) {
+  constructor(public readonly retryAfterMs: number, public readonly status = 429) {
     super(`Gemini polish HTTP 429 — rate limited`, false, Math.ceil(retryAfterMs / 1000));
     this.name = "RateLimitError";
+  }
+}
+
+type GeminiPoolRecovery = {
+  key429At: Map<string, number>;
+  key429CooldownUntil: Map<string, number>;
+  pauseUntil: number;
+  generation: number;
+  recoverySlots: number;
+};
+
+const POOL_COOLDOWN_MS = 30_000;
+const POOL_RECOVERY_STAGGER_MS = 750;
+const POOL_429_WINDOW_MS = 60_000;
+
+function pauseExhaustedGeminiPool(keys: string[], pool: GeminiPoolRecovery, now: number, log: Log): void {
+  const allKeysRecentlyRateLimited = keys.every((key) => {
+    const last429At = pool.key429At.get(key);
+    return last429At !== undefined && now - last429At <= POOL_429_WINDOW_MS;
+  });
+  if (!allKeysRecentlyRateLimited) return;
+  const latestKeyCooldown = Math.max(...keys.map((key) => pool.key429CooldownUntil.get(key) ?? 0));
+  const nextPauseUntil = Math.max(now + POOL_COOLDOWN_MS, latestKeyCooldown);
+  if (nextPauseUntil <= pool.pauseUntil) return;
+  const alreadyPaused = pool.pauseUntil > now;
+  pool.pauseUntil = nextPauseUntil;
+  pool.generation++;
+  pool.recoverySlots = 0;
+  pool.key429At.clear();
+  if (!alreadyPaused) {
+    log(`  Gemini key pool exhausted by 429 responses; pausing all requests for ${Math.ceil((pool.pauseUntil - now) / 1000)}s before a staggered resume`);
+  }
+}
+
+async function waitForGeminiPoolRecovery(pool: GeminiPoolRecovery, signal: AbortSignal, workerState: { generation: number }): Promise<void> {
+  while (!signal.aborted) {
+    const remainingMs = pool.pauseUntil - Date.now();
+    if (remainingMs > 0) {
+      await waitForRetry(remainingMs, signal);
+      continue;
+    }
+    if (workerState.generation !== pool.generation) {
+      workerState.generation = pool.generation;
+      const slot = pool.recoverySlots++;
+      if (slot > 0) await waitForRetry(slot * POOL_RECOVERY_STAGGER_MS, signal);
+    }
+    if (pool.pauseUntil <= Date.now()) return;
   }
 }
 
 export async function generatePolish(key: string, targets: Pair[], context: Pair[], signal: AbortSignal, log: Log = () => {}, strictSinhala = false): Promise<string> {
   const model = process.env["GEMINI_POLISH_MODEL"]?.trim() || "gemini-3.1-flash-lite";
   if (!/^gemini-[a-z0-9.-]*flash[a-z0-9.-]*$/.test(model)) throw new PolishError("GEMINI_POLISH_MODEL must be a Gemini Flash model", true);
-  // Retry once per model on 503 overload only, using the same key and exact cue payload.
-  const models = [...new Set([model, "gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.5-flash", "gemini-3.6-flash"])];
-  for (const [position, currentModel] of models.entries()) {
-    for (let attempt = 0; attempt < 2; attempt++) {
-      if (signal.aborted) throw new PolishError("Gemini polish cancelled — nothing published");
-      let response: Response;
-      try {
-      response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent`, {
+  // Only use the configured model — no fallbacks to other models.
+  // On 503 overload: retry once on the same model with the same key and payload, then throw.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (signal.aborted) throw new PolishError("Gemini polish cancelled — nothing published");
+    let response: Response;
+    try {
+      response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-goog-api-key": key },
         signal,
@@ -551,48 +573,49 @@ export async function generatePolish(key: string, targets: Pair[], context: Pair
           },
         }),
       });
-      } catch (error) {
-        // Transient network drop (DNS/socket reset): hand to the rate-limit backoff path instead of crashing.
-        if (signal.aborted || (error as Error)?.name === "AbortError") throw error;
-        log(`  Gemini network error (${(error as Error)?.message ?? "fetch failed"}); backing off and rotating key (cues ${targets[0]?.id}–${targets.at(-1)?.id})`);
-        throw new RateLimitError(5000);
-      }
-      if (response.status === 503 && (attempt === 0 || position < models.length - 1)) {
-        const retryHeader = response.headers.get("retry-after");
-        const seconds = retryHeader ? (Number(retryHeader) || Math.ceil((Date.parse(retryHeader) - Date.now()) / 1000)) : 0;
-        await response.body?.cancel();
-        const nextModel = attempt === 0 ? currentModel : models[position + 1];
-        const waitMs = Math.max(2000, Number.isFinite(seconds) ? seconds * 1000 : 0);
-        log(`  Gemini ${currentModel} HTTP 503; ${attempt === 0 ? "retry" : `fallback → ${nextModel}`} after ${waitMs / 1000}s (cues ${targets[0]?.id}–${targets.at(-1)?.id})`);
-        await waitForRetry(waitMs, signal);
-        if (attempt === 0) continue;
-        break;
-      }
-      if (response.status === 429) {
-        // Throw a special error so the worker pool can rotate to a fresh key.
-        const retryHeader = response.headers.get("retry-after");
-        const seconds = retryHeader ? (Number(retryHeader) || Math.ceil((Date.parse(retryHeader) - Date.now()) / 1000)) : 0;
-        await response.body?.cancel();
-        const waitMs = Math.max(5000, Number.isFinite(seconds) ? seconds * 1000 : 0);
-        throw new RateLimitError(waitMs);
-      }
-      if (!response.ok) {
-        const retryHeader = response.headers.get("retry-after");
-        const seconds = retryHeader ? (Number(retryHeader) || Math.ceil((Date.parse(retryHeader) - Date.now()) / 1000)) : 0;
-        // Never put provider error bodies or credential-bearing URLs in logs.
-        throw new PolishError(`Gemini polish HTTP ${response.status} — stopped; nothing published`,
-          [400, 401, 402, 403, 404].includes(response.status), Number.isFinite(seconds) ? Math.max(0, seconds) : 0);
-      }
-      const body = await response.json();
-      const candidate = body.candidates?.[0];
-      if (body.promptFeedback?.blockReason || candidate?.finishReason !== "STOP") {
-        throw new PolishError("Gemini polish refused or incomplete — stopped; nothing published", true);
-      }
-      const text = candidate?.content?.parts?.filter((part: { thought?: boolean }) => !part.thought)
-        .map((part: { text?: string }) => part.text ?? "").join("");
-      if (!text) throw new PolishError("Gemini polish returned no text — nothing published");
-      return text;
+    } catch (error) {
+      // Transient network drop (DNS/socket reset): hand to the rate-limit backoff path instead of crashing.
+      if (signal.aborted || (error as Error)?.name === "AbortError") throw error;
+      log(`  Gemini network error (${(error as Error)?.message ?? "fetch failed"}); backing off and rotating key (cues ${targets[0]?.id}-${targets.at(-1)?.id})`);
+      throw new RateLimitError(5000, 0);
     }
+    if (response.status === 503) {
+      const retryHeader = response.headers.get("retry-after");
+      const seconds = retryHeader ? (Number(retryHeader) || Math.ceil((Date.parse(retryHeader) - Date.now()) / 1000)) : 0;
+      await response.body?.cancel();
+      const waitMs = Math.max(2000, Number.isFinite(seconds) ? seconds * 1000 : 0);
+      if (attempt === 0) {
+        log(`  Gemini ${model} HTTP 503; retry after ${waitMs / 1000}s (cues ${targets[0]?.id}-${targets.at(-1)?.id})`);
+        await waitForRetry(waitMs, signal);
+        continue;
+      }
+      // Second attempt also 503 — give up and let the worker pool rotate to a fresh key.
+      throw new RateLimitError(waitMs, 503);
+    }
+    if (response.status === 429) {
+      // Throw a special error so the worker pool can rotate to a fresh key.
+      const retryHeader = response.headers.get("retry-after");
+      const seconds = retryHeader ? (Number(retryHeader) || Math.ceil((Date.parse(retryHeader) - Date.now()) / 1000)) : 0;
+      await response.body?.cancel();
+      const waitMs = Math.max(5000, Number.isFinite(seconds) ? seconds * 1000 : 0);
+      throw new RateLimitError(waitMs);
+    }
+    if (!response.ok) {
+      const retryHeader = response.headers.get("retry-after");
+      const seconds = retryHeader ? (Number(retryHeader) || Math.ceil((Date.parse(retryHeader) - Date.now()) / 1000)) : 0;
+      // Never put provider error bodies or credential-bearing URLs in logs.
+      throw new PolishError(`Gemini polish HTTP ${response.status} — stopped; nothing published`,
+        [400, 401, 402, 403, 404].includes(response.status), Number.isFinite(seconds) ? Math.max(0, seconds) : 0);
+    }
+    const body = await response.json();
+    const candidate = body.candidates?.[0];
+    if (body.promptFeedback?.blockReason || candidate?.finishReason !== "STOP") {
+      throw new PolishError("Gemini polish refused or incomplete — stopped; nothing published", true);
+    }
+    const text = candidate?.content?.parts?.filter((part: { thought?: boolean }) => !part.thought)
+      .map((part: { text?: string }) => part.text ?? "").join("");
+    if (!text) throw new PolishError("Gemini polish returned no text — nothing published");
+    return text;
   }
   throw new PolishError("Gemini polish overload retries exhausted — stopped; nothing published");
 }
@@ -614,7 +637,7 @@ export function verifySubtitleAlignment(english: Cue[], polished: Cue[], log: Lo
       throw new PolishError(`Subtitle empty dialogue detected at cue ${i + 1}`);
     }
   }
-  log(`  ✓ Subtitle Timing & Dialogue Integrity Check: 100% verified (${english.length}/${english.length} cues, 0 timing drift, exact 1:1 dialogue alignment)`);
+  log(`  [OK] Subtitle Timing & Dialogue Integrity Check: 100% verified (${english.length}/${english.length} cues, 0 timing drift, exact 1:1 dialogue alignment)`);
 }
 
 export async function polishCues(english: Cue[], sinhala: Cue[], log: Log, options: {
@@ -697,10 +720,8 @@ export async function polishCues(english: Cue[], sinhala: Cue[], log: Log, optio
     log("@@step:polish");
     log(`@@pct:${pairs.length}/${pairs.length}`);
     log("@@polish_complete");
-    log("  Gemini polish complete — all cues were cached, trivial or music, original timestamps preserved");
+    log("  Gemini polish complete - all cues were cached, trivial or music, original timestamps preserved");
   }
-
-  // Default to max 7 active workers so extra keys remain available for 429 rotation.
   const maxWorkers = configuredMaxWorkers(keys.length, options.maxWorkers);
   const workerSlots = Math.max(1, Math.min(keys.length, maxWorkers, dialoguePairs.length));
   const defaultChunkSize = Number(process.env["GEMINI_CHUNK_SIZE"]) || 50;
@@ -725,6 +746,7 @@ export async function polishCues(english: Cue[], sinhala: Cue[], log: Log, optio
   const STAGGER_MS = options.pauseMs !== undefined ? 0 : 600;
   // Shared across all workers: a key that hit 429 is skipped by every worker until its cooldown expires.
   const keyCooldownUntil = new Map<string, number>();
+  const poolRecovery: GeminiPoolRecovery = { key429At: new Map(), key429CooldownUntil: new Map(), pauseUntil: 0, generation: 0, recoverySlots: 0 };
   const pickKey = (offset: number): { index: number; waitMs: number } => {
     const now = Date.now();
     let soonest = offset, soonestAt = Infinity;
@@ -741,6 +763,7 @@ export async function polishCues(english: Cue[], sinhala: Cue[], log: Log, optio
     if (controller.signal.aborted) return;
     // Each worker owns a slot offset; on 429 it steps forward through the pool.
     let keyOffset = worker;
+    const poolRecoveryState = { generation: poolRecovery.generation };
     const workerId = worker + 1;
     while (next < chunks.length && !controller.signal.aborted) {
       const chunkIdx = next++;
@@ -758,12 +781,15 @@ export async function polishCues(english: Cue[], sinhala: Cue[], log: Log, optio
             const maxKeyAttempts = Math.max(keys.length * 3, 20);
             let consecutive429 = 0;
             for (let keyAttempt = 0; keyAttempt < maxKeyAttempts; keyAttempt++) {
+              await waitForGeminiPoolRecovery(poolRecovery, controller.signal, poolRecoveryState);
+              if (controller.signal.aborted) return;
               const pick = pickKey(keyOffset);
               keyOffset = pick.index;
               if (pick.waitMs > 0) {
                 const waitMs = Math.min(25000, pick.waitMs);
-                log(`  All Gemini keys cooling down; worker ${workerId} waits ${Math.ceil(waitMs / 1000)}s (cues ${first.id}–${last.id})`);
+                log(`  All Gemini keys cooling down; worker ${workerId} waits ${Math.ceil(waitMs / 1000)}s (cues ${first.id}-${last.id})`);
                 await waitForRetry(waitMs, controller.signal);
+                continue;
               }
               const key = keys[keyOffset % keys.length]!;
               try {
@@ -780,7 +806,7 @@ export async function polishCues(english: Cue[], sinhala: Cue[], log: Log, optio
                     break;
                   } catch (valErr) {
                     if (attempt === 0 && !controller.signal.aborted && !options.generate && valErr instanceof PolishError && !valErr.blocked) {
-                      log(`  Gemini polish cue validation retry (cues ${first.id}–${last.id})`);
+                      log(`  Gemini polish cue validation retry (cues ${first.id}-${last.id})`);
                       log(`@@worker_retry:${workerId}:${chunkIdx}`);
                       await waitForRetry(1500, controller.signal);
                       continue;
@@ -793,12 +819,19 @@ export async function polishCues(english: Cue[], sinhala: Cue[], log: Log, optio
               } catch (err) {
                 if (err instanceof RateLimitError && !controller.signal.aborted && !options.generate) {
                   consecutive429++;
-                  const cooldownMs = Math.min(30000, Math.max(err.retryAfterMs, 10000 + Math.min(consecutive429, 5) * 1000));
-                  keyCooldownUntil.set(key, Math.max(keyCooldownUntil.get(key) ?? 0, Date.now() + cooldownMs));
+                  const cooldownMs = Math.max(err.retryAfterMs, 10000 + Math.min(consecutive429, 5) * 1000);
+                  const cooldownUntil = Date.now() + cooldownMs;
+                  keyCooldownUntil.set(key, Math.max(keyCooldownUntil.get(key) ?? 0, cooldownUntil));
+                  const now = Date.now();
+                  if (err.status === 429) {
+                    poolRecovery.key429At.set(key, now);
+                    poolRecovery.key429CooldownUntil.set(key, Math.max(poolRecovery.key429CooldownUntil.get(key) ?? 0, cooldownUntil));
+                    pauseExhaustedGeminiPool(keys, poolRecovery, now, log);
+                  }
                   keyOffset++;
                   const nextPick = pickKey(keyOffset);
                   const nextKey = keys[nextPick.index % keys.length]!;
-                  log(`  Gemini 429 on key …${key.slice(-6)}; cooling ${Math.round(cooldownMs / 1000)}s for all workers → ${nextPick.waitMs > 0 ? "no fresh key, waiting" : `fresh key …${nextKey.slice(-6)}`} (cues ${first.id}–${last.id})`);
+                  log(`  Gemini 429 on key ...${key.slice(-6)}; cooling ${Math.round(cooldownMs / 1000)}s for all workers -> ${nextPick.waitMs > 0 ? "no fresh key, waiting" : `fresh key ...${nextKey.slice(-6)}`} (cues ${first.id}-${last.id})`);
                   log(`@@worker_retry:${workerId}:${chunkIdx}`);
                   // Fresh key available: tiny pause only. Otherwise the wait happens at the top of the loop.
                   if (nextPick.waitMs === 0) await waitForRetry(500, controller.signal);
@@ -815,14 +848,14 @@ export async function polishCues(english: Cue[], sinhala: Cue[], log: Log, optio
             if (chunkAttempt < MAX_CHUNK_ATTEMPTS - 1) {
               keyOffset++;
               const waitMs = (chunkAttempt + 1) * 2500;
-              log(`  Gemini polish chunk retry ${chunkAttempt + 2}/${MAX_CHUNK_ATTEMPTS} after ${waitMs / 1000}s (cues ${first.id}–${last.id})`);
+              log(`  Gemini polish chunk retry ${chunkAttempt + 2}/${MAX_CHUNK_ATTEMPTS} after ${waitMs / 1000}s (cues ${first.id}-${last.id})`);
               log(`@@worker_retry:${workerId}:${chunkIdx}`);
               await waitForRetry(waitMs, controller.signal);
               continue;
             }
             // One bad line can sink a whole chunk: retry in small pieces so the rest still get Sinhala.
-            log(`  Gemini polish: chunk retries exhausted — retrying cues ${first.id}–${last.id} in small groups`);
-            result = (await polishInSmallGroups(keys, targets, pairs, controller.signal, log, keyOffset, undefined, keyCooldownUntil)).cues;
+            log(`  Gemini polish: chunk retries exhausted - retrying cues ${first.id}-${last.id} in small groups`);
+            result = (await polishInSmallGroups(keys, targets, pairs, controller.signal, log, keyOffset, undefined, keyCooldownUntil, false, poolRecovery)).cues;
             break;
           }
         }
@@ -855,10 +888,10 @@ export async function polishCues(english: Cue[], sinhala: Cue[], log: Log, optio
   if (failure) throw failure;
   if (done !== pairs.length) throw new PolishError("Gemini polish incomplete — nothing published");
   log("@@polish_complete");
-  log("  Gemini polish complete — all cue IDs, order and original timestamps preserved");
+  log("  Gemini polish complete - all cue IDs, order and original timestamps preserved");
   verifySubtitleAlignment(english, out, log);
   // Repair leftovers before semantic QA so every freshly translated line is reviewed too.
-  await ensureAllSinhala(english, out, pairs, keys, log, options.generate, keyCooldownUntil, options.onChunkDone);
+  await ensureAllSinhala(english, out, pairs, keys, log, options.generate, keyCooldownUntil, options.onChunkDone, poolRecovery);
   const shouldSkipNetworkAudit = !options.auditBatchFn && Boolean(options.generate || (process.env["VITEST"] && options.audit !== true) || options.audit === false);
   if (!shouldSkipNetworkAudit) {
     let audit: Awaited<ReturnType<typeof runFinalQAAudit>>;
@@ -877,14 +910,27 @@ export async function polishCues(english: Cue[], sinhala: Cue[], log: Log, optio
       );
     }
   }
-  await ensureAllSinhala(english, out, pairs, keys, log, options.generate, keyCooldownUntil, options.onChunkDone);
+  await ensureAllSinhala(english, out, pairs, keys, log, options.generate, keyCooldownUntil, options.onChunkDone, poolRecovery);
   return repairForeignScript(out, log);
 }
 
 /** Retry cues 5 at a time; anything still failing keeps its Sinhala draft (or English, caught by the final gate). */
-async function polishInSmallGroups(keys: string[], targets: Pair[], pairs: Pair[], signal: AbortSignal, log: Log, offset = 0, generate?: Generate, cooldown = new Map<string, number>(), strictSinhala = false): Promise<{ cues: Map<number, string>; temporaryIds: Set<number> }> {
+async function polishInSmallGroups(keys: string[], targets: Pair[], pairs: Pair[], signal: AbortSignal, log: Log, offset = 0, generate?: Generate, cooldown = new Map<string, number>(), strictSinhala = false, poolRecovery?: GeminiPoolRecovery): Promise<{ cues: Map<number, string>; temporaryIds: Set<number> }> {
   const result = new Map<number, string>();
   const temporaryIds = new Set<number>();
+  const poolRecoveryState = poolRecovery ? { generation: poolRecovery.generation } : undefined;
+
+  // Build a fresh per-call cooldown that starts clean but respects only genuinely long cooldowns
+  // from the shared map (>30 s). Short cooldowns from the main phase are expired by the time
+  // the small-group pass begins, so carrying them forward caused every key to appear "cooling"
+  // even though they were actually ready, producing the "key cooling 5s — rotating" spam loop.
+  const localCooldown = new Map<string, number>();
+  const now = Date.now();
+  for (const [k, until] of cooldown) {
+    // Only inherit cooldowns that are still meaningfully in the future (>30 s remaining)
+    if (until - now > 30_000) localCooldown.set(k, until);
+  }
+
   let cursor = offset;
   for (let i = 0; i < targets.length; i += 5) {
     const group = targets.slice(i, i + 5);
@@ -893,27 +939,35 @@ async function polishInSmallGroups(keys: string[], targets: Pair[], pairs: Pair[
     const context = [...pairs.slice(Math.max(0, first.id - 3), first.id - 1), ...pairs.slice(last.id, last.id + 2)];
     let ok: Map<number, string> | null = null;
     let onlyTemporary = true;
-    // One complete pool rotation plus one bounded cooldown recovery pass.
+    // Two complete pool rotations: first on fresh keys, then with cooldown recovery if needed.
     for (let k = 0; k < keys.length * 2 && !ok; k++) {
+      if (poolRecovery && poolRecoveryState) await waitForGeminiPoolRecovery(poolRecovery, signal, poolRecoveryState);
       if (signal.aborted) throw new PolishError("Gemini polish cancelled — nothing published");
       let key: string | undefined;
+      let waitedForKey = false;
       while (!key) {
         let soonest = Infinity;
         for (let n = 0; n < keys.length; n++) {
           const index = (cursor + n) % keys.length;
           const candidate = keys[index];
           if (!candidate) continue;
-          const until = cooldown.get(candidate) ?? 0;
+          const until = localCooldown.get(candidate) ?? 0;
           if (until <= Date.now()) { key = candidate; cursor = index + 1; break; }
           soonest = Math.min(soonest, until);
         }
         if (!key) {
           if (!Number.isFinite(soonest)) throw new PolishError("No Gemini keys available", true);
           const waitMs = Math.max(1, soonest - Date.now());
-          log(`  All Gemini keys cooling down; leftover retry waits ${Math.ceil(waitMs / 1000)}s (cues ${first.id}–${last.id})`);
+          // Only log the first wait per group to avoid spam when many keys are cooling.
+          if (!waitedForKey) {
+            log(`  Gemini leftover retry: all keys cooling - waiting ${Math.ceil(waitMs / 1000)}s then retrying (cues ${first.id}-${last.id})`);
+            waitedForKey = true;
+          }
           await waitForRetry(waitMs, signal);
         }
       }
+      if (poolRecovery && poolRecoveryState) await waitForGeminiPoolRecovery(poolRecovery, signal, poolRecoveryState);
+      if (signal.aborted) throw new PolishError("Gemini polish cancelled");
       try {
         const raw = generate ? await generate(key, group, context, signal) : await generatePolish(key, group, context, signal, log, strictSinhala);
         ok = validatePolish(group, raw);
@@ -928,8 +982,16 @@ async function polishInSmallGroups(keys: string[], targets: Pair[], pairs: Pair[
         if (!temporary) onlyTemporary = false;
         if (temporary) {
           const waitMs = err instanceof RateLimitError ? err.retryAfterMs : Math.max(5000, (err instanceof PolishError ? err.retryAfterSeconds : 0) * 1000);
-          cooldown.set(key, Math.max(cooldown.get(key) ?? 0, Date.now() + waitMs));
-          log(`  Gemini leftover retry: key cooling for ${Math.ceil(waitMs / 1000)}s — rotating (cues ${first.id}–${last.id})`);
+          const cooldownUntil = Date.now() + waitMs;
+          localCooldown.set(key, Math.max(localCooldown.get(key) ?? 0, cooldownUntil));
+          // Also propagate back to the shared map so the caller stays informed.
+          cooldown.set(key, Math.max(cooldown.get(key) ?? 0, cooldownUntil));
+          if (poolRecovery && err instanceof RateLimitError && err.status === 429) {
+            const failedAt = Date.now();
+            poolRecovery.key429At.set(key, failedAt);
+            poolRecovery.key429CooldownUntil.set(key, Math.max(poolRecovery.key429CooldownUntil.get(key) ?? 0, cooldownUntil));
+            pauseExhaustedGeminiPool(keys, poolRecovery, failedAt, log);
+          }
         } else if (k < keys.length * 2 - 1) {
           await waitForRetry(1500, signal);
         }
@@ -947,19 +1009,19 @@ async function polishInSmallGroups(keys: string[], targets: Pair[], pairs: Pair[
  * Pre-publish gate: every cue with real English words must come out in Sinhala.
  * Leftovers get one more small-group pass; if any remain, nothing is published.
  */
-async function ensureAllSinhala(english: Cue[], out: Cue[], pairs: Pair[], keys: string[], log: Log, generate?: Generate, cooldown = new Map<string, number>(), onChunkDone?: (cues: [number, string][]) => void) {
+async function ensureAllSinhala(english: Cue[], out: Cue[], pairs: Pair[], keys: string[], log: Log, generate?: Generate, cooldown = new Map<string, number>(), onChunkDone?: (cues: [number, string][]) => void, poolRecovery?: GeminiPoolRecovery) {
   let missing = findUntranslatedCues(english, out);
   if (!missing.length) {
-    log(`  ✓ English vs Sinhala check: all ${english.length} cues are in Sinhala`);
+    log(`  [OK] English vs Sinhala check: all ${english.length} cues are in Sinhala`);
     return;
   }
-  log(`  English vs Sinhala check: ${missing.length} cue(s) still English — re-translating`);
+  log(`  English vs Sinhala check: ${missing.length} cue(s) still English - re-translating`);
   const controller = new AbortController();
   const targets = missing.flatMap((id) => {
     const pair = pairs[id - 1];
     return pair ? [{ ...pair, si: out[id - 1]?.text ?? "" }] : [];
   });
-  const fixed = await polishInSmallGroups(keys, targets, pairs, controller.signal, log, 0, generate, cooldown, true);
+  const fixed = await polishInSmallGroups(keys, targets, pairs, controller.signal, log, 0, generate, cooldown, true, poolRecovery);
   const updated: [number, string][] = [];
   for (const [id, text] of fixed.cues) {
     const cue = out[id - 1];
@@ -973,7 +1035,7 @@ async function ensureAllSinhala(english: Cue[], out: Cue[], pairs: Pair[], keys:
   if (missing.length) {
     throw new FinalReviewError(`${missing.length} cue(s) still in English (e.g. #${missing.slice(0, 8).join(", #")}) — not published`, 0, english.length, out, missing.every((id) => fixed.temporaryIds.has(id)));
   }
-  log(`  ✓ English vs Sinhala check: all ${english.length} cues are in Sinhala`);
+  log(`  [OK] English vs Sinhala check: all ${english.length} cues are in Sinhala`);
 }
 
 /** Last line of defence before publishing: no cue may contain Telugu/Tamil/Kannada/Hindi/etc. letters. */
