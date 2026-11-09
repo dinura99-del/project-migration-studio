@@ -705,6 +705,9 @@ function ManualCard({
     } catch { /* ignore */ }
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
+    // Reconnect up to 3 times on a dropped stream; each retry resends the cached draft/polished cues.
+    for (let attempt = 0; ; attempt++) {
+    let gotDone = false;
     try {
       const r = await fetch("/api/public/manual/stream", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -748,6 +751,7 @@ function ManualCard({
             try { localStorage.setItem(srtCacheKey, JSON.stringify(cachedData)); } catch { /* ignore */ }
           }
           if (ev.done) {
+            gotDone = true;
             status = ev.status ?? "failed";
             issues = ev.issues?.length ? ev.issues : undefined;
             if (status === "completed") {
@@ -869,12 +873,29 @@ function ManualCard({
           }
         }
       }
+      if (!gotDone) throw new TypeError("stream ended before the job finished");
+      break;
     } catch (x) {
       if ((x as Error).name === "AbortError" || abortRequestedRef.current) {
         const l = "⏹ Step cancelled by user."; push(l); setLogs((v) => [...v, l]);
-      } else {
-        const l = `✗ ${(x as Error).message}`; push(l); setLogs((v) => [...v, l]);
+        break;
       }
+      const msg = (x as Error).message;
+      const permanent = msg === "Invalid access key" || /^Request failed \(4\d\d\)/.test(msg);
+      if (!permanent && attempt < 3) {
+        const waitS = 3 * (attempt + 1);
+        const l = `↻ connection lost (${msg}) — reconnecting ${attempt + 1}/3 in ${waitS}s, resuming from saved lines…`;
+        push(l); setLogs((v) => [...v, l]);
+        await new Promise((res) => setTimeout(res, waitS * 1000));
+        if (abortRequestedRef.current) { const c = "⏹ Step cancelled by user."; push(c); setLogs((v) => [...v, c]); break; }
+        continue;
+      }
+      const l = `✗ ${msg}`; push(l); setLogs((v) => [...v, l]);
+      break;
+    }
+    }
+    try {
+      // fallthrough to cleanup
     } finally {
       abortControllerRef.current = null;
     }

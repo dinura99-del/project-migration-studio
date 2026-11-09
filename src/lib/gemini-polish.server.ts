@@ -528,7 +528,9 @@ export async function generatePolish(key: string, targets: Pair[], context: Pair
   for (const [position, currentModel] of models.entries()) {
     for (let attempt = 0; attempt < 2; attempt++) {
       if (signal.aborted) throw new PolishError("Gemini polish cancelled — nothing published");
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent`, {
+      let response: Response;
+      try {
+      response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-goog-api-key": key },
         signal,
@@ -544,6 +546,12 @@ export async function generatePolish(key: string, targets: Pair[], context: Pair
           },
         }),
       });
+      } catch (error) {
+        // Transient network drop (DNS/socket reset): hand to the rate-limit backoff path instead of crashing.
+        if (signal.aborted || (error as Error)?.name === "AbortError") throw error;
+        log(`  Gemini network error (${(error as Error)?.message ?? "fetch failed"}); backing off and rotating key (cues ${targets[0]?.id}–${targets.at(-1)?.id})`);
+        throw new RateLimitError(5000);
+      }
       if (response.status === 503 && (attempt === 0 || position < models.length - 1)) {
         const retryHeader = response.headers.get("retry-after");
         const seconds = retryHeader ? (Number(retryHeader) || Math.ceil((Date.parse(retryHeader) - Date.now()) / 1000)) : 0;
