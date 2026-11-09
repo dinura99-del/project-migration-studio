@@ -1,0 +1,11 @@
+# Tasks
+- [x] Add bounded HTTP 503 retry after two seconds and Flash model fallback; 21 tests pass, including recovery, cancellation and immutable timing; live publish remains unverified.
+- [x] Add bounded multi-key Gemini Flash post-editing after base translation.
+- [x] Validate complete cue mapping and keep timestamps immutable before publishing.
+- [x] Display separate polishing progress in Manual Process.
+- [x] Test safety rules and verify integration; live two-cue Gemini request returned HTTP 503, so full publish remains unverified.- [x] Import OnFlix automation project from uploaded ZIP; 70 tests pass, admin screen loads.
+- [x] Two-stage translation: free Google draft first, then Gemini polish (queue, Manual, GitHub worker); 81 tests pass, not yet run on a real movie.
+- [ ] Add service keys (OnFlix database URL + service key, CRON_SECRET, TMDB, Gemini, Groq, etc.) — waiting on user.
+- [ ] Point cron-job.org and GitHub Actions at the new address after publishing — waiting on user.
+- [x] Block other-language letters in Sinhala subtitles (new jobs, editor saves, re-publishes); Dark Knight fully repaired.
+- [ ] Re-run `npm run repair:subtitles -- --apply` for ~17 still-damaged published subtitles once Gemini quota resets; ~13 others only got letter clean-up and may need a full re-translation — waiting on Gemini quota / user decision.

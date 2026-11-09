@@ -1,0 +1,103 @@
+{
+  "source": "code-archive (pixel-perfect-match-main.zip, OnFlix Subtitle Automation dashboard, originally a Lovable TanStack Start project)",
+  "capabilities": [
+    {
+      "capability": "code",
+      "source": "src/, public/, scripts/",
+      "outcome": "migrate",
+      "status": "migrated",
+      "next_action": "Copy app source into project, keep target TanStack versions"
+    },
+    {
+      "capability": "schema",
+      "source": "src/lib/sql.ts (subtitle_automation_jobs, settings) in external OnFlix Supabase",
+      "outcome": "preserve external",
+      "status": "pending",
+      "next_action": "Queue and content tables belong to the separate OnFlix site database, which other apps read; keep connecting to it via ONFLIX_SUPABASE_* secrets"
+    },
+    {
+      "capability": "records",
+      "source": "external OnFlix Supabase",
+      "outcome": "preserve external",
+      "status": "accepted",
+      "next_action": "No copy needed; data stays in the OnFlix database"
+    },
+    {
+      "capability": "auth identities",
+      "source": "none (single admin, CRON_SECRET gate)",
+      "outcome": "none",
+      "status": "accepted",
+      "next_action": "No user accounts exist in the source"
+    },
+    {
+      "capability": "authorization",
+      "source": "CRON_SECRET check on server functions and /api/public/cron/*",
+      "outcome": "migrate",
+      "status": "pending",
+      "next_action": "Keep code as-is; needs CRON_SECRET secret"
+    },
+    {
+      "capability": "uploaded file bytes",
+      "source": "OnFlix Supabase Storage (Sinhala .srt)",
+      "outcome": "preserve external",
+      "status": "accepted",
+      "next_action": "Files stay in OnFlix storage"
+    },
+    {
+      "capability": "external providers",
+      "source": "TMDB, Wyzie, SubDL, MyMemory, Groq, Gemini, OpenRouter, GitHub models, EmbedMaster",
+      "outcome": "preserve",
+      "status": "pending",
+      "next_action": "Add provider keys via secure secret form before live verification"
+    },
+    {
+      "capability": "public endpoints",
+      "source": "/api/public/cron/scan, /api/public/cron/process, /api/public/manual/stream, /api/public/copilot/chat",
+      "outcome": "preserve",
+      "status": "migrated",
+      "next_action": "Copy routes; update cron-job.org URL to new domain at cutover"
+    },
+    {
+      "capability": "schedules",
+      "source": ".github/workflows/process-queue.yml (GitHub Actions every 15 min) + external cron-job.org",
+      "outcome": "preserve",
+      "status": "migrated",
+      "next_action": "Copy workflow; it runs in the user's GitHub repo with GitHub secrets"
+    },
+    {
+      "capability": "revalidation webhook",
+      "source": "HMAC call to onflixlk.vercel.app/api/revalidate",
+      "outcome": "preserve",
+      "status": "pending",
+      "next_action": "Needs REVALIDATE_SECRET"
+    },
+    {
+      "capability": "PWA",
+      "source": "public/manifest.webmanifest, sw.js, icons",
+      "outcome": "migrate",
+      "status": "migrated",
+      "next_action": "Copy public assets and root head links"
+    },
+    {
+      "capability": "secrets",
+      "source": "ONFLIX_SUPABASE_URL, ONFLIX_SUPABASE_SERVICE_KEY, CRON_SECRET, TMDB_API_KEY, WYZIE_API_KEY, SUBDL_API_KEY*, GROQ_API_KEY, GEMINI_API_KEY*, OPENROUTER_API_KEY, REVALIDATE_SECRET, MYMEMORY_USER_EMAIL, GITHUB_TOKEN",
+      "outcome": "request",
+      "status": "pending",
+      "next_action": "User adds values through secure form"
+    },
+    {
+      "capability": "cutover",
+      "source": "cron-job.org URLs, live app at onflix-automate.lovable.app",
+      "outcome": "pending",
+      "status": "pending",
+      "next_action": "Point external cron callers at the new project URL after publishing"
+    },
+    {
+      "capability": "verification",
+      "source": "tests in src/test, preview render",
+      "outcome": "verify",
+      "status": "partial",
+      "next_action": "70/70 tests pass and admin sign-in screen renders; dashboard data, scan and process runs need secrets"
+    }
+  ]
+}

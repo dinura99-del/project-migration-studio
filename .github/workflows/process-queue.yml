@@ -1,0 +1,80 @@
+name: OnFlix Subtitle Queue Worker
+
+on:
+  # 1. Scheduled run every 15 minutes
+  schedule:
+    - cron: '*/15 * * * *'
+
+  # 2. Manual trigger from GitHub Actions tab
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Force process without waiting for retry cooldown (true/false)'
+        required: false
+        default: 'false'
+
+  # 3. Trigger via Web API call (repository_dispatch) from cron-job.org or Lovable Web
+  repository_dispatch:
+    types: [process-queue, process-job]
+
+concurrency:
+  group: onflix-subtitle-queue-worker
+  cancel-in-progress: false
+
+jobs:
+  process-subtitles:
+    name: Process OnFlix Subtitle Queue
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install --no-audit --legacy-peer-deps
+
+      - name: Run Subtitle Worker
+        env:
+          ONFLIX_SUPABASE_URL: ${{ secrets.ONFLIX_SUPABASE_URL }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          ONFLIX_SUPABASE_SERVICE_KEY: ${{ secrets.ONFLIX_SUPABASE_SERVICE_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          REVALIDATE_SECRET: ${{ secrets.REVALIDATE_SECRET }}
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+          WYZIE_API_KEY: ${{ secrets.WYZIE_API_KEY }}
+          SUBDL_API_KEY: ${{ secrets.SUBDL_API_KEY }}
+          SUBDL_API_KEY_1: ${{ secrets.SUBDL_API_KEY_1 }}
+          SUBDL_API_KEY_2: ${{ secrets.SUBDL_API_KEY_2 }}
+          SUBDL_API_KEY_3: ${{ secrets.SUBDL_API_KEY_3 }}
+          SUBDL_API_KEY_4: ${{ secrets.SUBDL_API_KEY_4 }}
+          SUBDL_API_KEY_5: ${{ secrets.SUBDL_API_KEY_5 }}
+          MYMEMORY_USER_EMAIL: ${{ secrets.MYMEMORY_USER_EMAIL }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GEMINI_MAX_WORKERS: ${{ secrets.GEMINI_MAX_WORKERS }}
+          GEMINI_CHUNK_SIZE: ${{ secrets.GEMINI_CHUNK_SIZE || '65' }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY_1: ${{ secrets.GEMINI_API_KEY_1 }}
+          GEMINI_API_KEY_2: ${{ secrets.GEMINI_API_KEY_2 }}
+          GEMINI_API_KEY_3: ${{ secrets.GEMINI_API_KEY_3 }}
+          GEMINI_API_KEY_4: ${{ secrets.GEMINI_API_KEY_4 }}
+          GEMINI_API_KEY_5: ${{ secrets.GEMINI_API_KEY_5 }}
+          GEMINI_API_KEY_6: ${{ secrets.GEMINI_API_KEY_6 }}
+          GEMINI_API_KEY_7: ${{ secrets.GEMINI_API_KEY_7 }}
+          GEMINI_API_KEY_8: ${{ secrets.GEMINI_API_KEY_8 }}
+          GEMINI_API_KEY_9: ${{ secrets.GEMINI_API_KEY_9 }}
+          GEMINI_API_KEY_10: ${{ secrets.GEMINI_API_KEY_10 }}
+          GEMINI_API_KEY_11: ${{ secrets.GEMINI_API_KEY_11 }}
+          GEMINI_API_KEY_12: ${{ secrets.GEMINI_API_KEY_12 }}
+          GEMINI_API_KEY_13: ${{ secrets.GEMINI_API_KEY_13 }}
+          GEMINI_API_KEY_14: ${{ secrets.GEMINI_API_KEY_14 }}
+          GEMINI_API_KEY_15: ${{ secrets.GEMINI_API_KEY_15 }}
+          FORCE: ${{ github.event.inputs.force || github.event.client_payload.force || 'false' }}
+        run: npx tsx scripts/worker.ts
