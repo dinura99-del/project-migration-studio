@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { FinalReviewError, generatePolish, geminiKeys, polishCues, PolishError, RateLimitError, validatePolish, isTrivialCue, cleanSinhalaText, lookupTranslationMemory, runFinalQAAudit, hasForeignScript } from "@/lib/gemini-polish.server";
+import { AuditRequestError, FinalReviewError, generatePolish, geminiKeys, polishCues, PolishError, RateLimitError, validatePolish, isTrivialCue, cleanSinhalaText, lookupTranslationMemory, runFinalQAAudit, hasForeignScript } from "@/lib/gemini-polish.server";
 import { buildSrt, parseSrt, sanitizeSinhalaSrt } from "@/lib/engine.server";
 
 const en = parseSrt("7\n00:00:01,123 --> 00:00:02,456\nWhere are you going?\n\n9\n00:00:03,111 --> 00:00:04,999\nI need to find him now.\n");
@@ -337,6 +337,32 @@ describe("Gemini subtitle polish", () => {
       });
       expect(batches).toBe(2);
       expect(audit).toMatchObject({ passed: false, checked: 60 });
+    });
+
+    it("retries a busy (503) review on the same key and marks quota-only failures as temporary", async () => {
+      const english = [{ index: "1", time: "00:00:01,000 --> 00:00:02,000", text: "Hello there" }];
+      const polished = [{ ...english[0]!, text: "ආයුබෝවන්" }];
+      let calls = 0;
+      const busyThenOk = await runFinalQAAudit(english, polished.map((c) => ({ ...c })), () => {}, {
+        keys: ["k1"], retryDelayMs: 0,
+        auditBatchFn: async () => {
+          if (++calls === 1) throw new AuditRequestError(503, "UNAVAILABLE");
+          return { summary: "ok", corrections: [] };
+        },
+      });
+      expect(calls).toBe(2);
+      expect(busyThenOk.passed).toBe(true);
+
+      const quota = await runFinalQAAudit(english, polished.map((c) => ({ ...c })), () => {}, {
+        keys: ["k1", "k2"], retryDelayMs: 0,
+        auditBatchFn: async () => { throw new AuditRequestError(429, "RESOURCE_EXHAUSTED"); },
+      });
+      expect(quota).toMatchObject({ passed: false, temporary: true });
+
+      const bad = await runFinalQAAudit(english, polished.map((c) => ({ ...c })), () => {}, {
+        keys: ["k1"], retryDelayMs: 0, auditBatchFn: async () => null,
+      });
+      expect(bad).toMatchObject({ passed: false, temporary: false });
     });
 
     it("fails closed when the final QA audit has no key", async () => {

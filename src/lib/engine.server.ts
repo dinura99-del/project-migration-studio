@@ -1552,9 +1552,18 @@ async function processJob(sb: SupabaseClient, s: Settings, j: any, log: Log, opt
       if (baseSinhalaCues.length) opts.onTranslated?.(buildSrt(baseSinhalaCues));
     }
 
+    // Resume from a QA checkpoint (saved when the final review stopped on Gemini quota/overload)
+    let cachedPolished = opts.cachedPolishedCues;
+    if (!cachedPolished) {
+      const cp = parseSrt(await read(`qa-checkpoint/${existingPath}`));
+      if (cp.length === enCues.length && cp.every((c, i) => c.time === enCues[i]?.time)) {
+        cachedPolished = Object.fromEntries(cp.map((c, i) => [String(i + 1), c.text]));
+        log(`  restored ${cp.length} polished cues from QA checkpoint — only the final review will run again`);
+      }
+    }
     log(`  stage 2: polishing via Multi-Key Gemini Engine (${geminiKeys().length} key(s) active)…`);
     const polishedCues = await polishCues(enCues, baseSinhalaCues, log, {
-      cachedCues: opts.cachedPolishedCues,
+      cachedCues: cachedPolished,
       onChunkDone: opts.onPolishedChunk,
     });
     opts.onTranslated?.(buildSrt(polishedCues));
@@ -1573,10 +1582,25 @@ async function processJob(sb: SupabaseClient, s: Settings, j: any, log: Log, opt
     await syncTrending(sb, log);
     await revalidateOnflixWeb(s, c, j, log);
     await set({ status: "completed", srt_path: path, srt_url: url, srt_preview: si.slice(0, 4000), error_log: null, next_retry_at: null });
+    await sb.storage.from(s.bucket).remove([`qa-checkpoint/${path}`]).catch(() => {});
     log(`  ✓ completed — ${url}`);
     await autoQueueNextEpisode(sb, j, log);
     return "completed";
   } catch (e) {
+    if (e instanceof FinalReviewError && e.temporary) {
+      // QA waiting: keep the polished work, retry only the final review soon. Not a human-review case.
+      const cpPath = `qa-checkpoint/${j.media_type === "movie" ? `movies/${j.tmdb_id}.si.srt` : `tv/${j.tmdb_id}/s${j.season_number}e${j.episode_number}.si.srt`}`;
+      const up = await sb.storage.from(s.bucket).upload(cpPath, new Blob([buildSrt(e.cues)], { type: "application/x-subrip" }), { upsert: true, contentType: "application/x-subrip" });
+      await set({
+        status: "failed",
+        attempts,
+        next_retry_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+        error_log: `[QA_WAITING] ${e.message} — Gemini busy/quota; final review retries in 30 min`,
+        srt_preview: sanitizeSinhalaSrt(buildSrt(e.cues)).slice(0, 4000),
+      });
+      log(`  ⏸ QA waiting: ${up.error ? "checkpoint save failed, " : "polished cues saved, "}final review retries in 30 min`);
+      return "qa_waiting";
+    }
     if (e instanceof FinalReviewError) {
       const preview = sanitizeSinhalaSrt(addWatermark(buildSrt(e.cues)));
       return markNeedsReview(e.message, preview);

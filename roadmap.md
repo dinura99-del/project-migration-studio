@@ -8,4 +8,5 @@
 - [ ] Add service keys (OnFlix database URL + service key, CRON_SECRET, TMDB, Gemini, Groq, etc.) — waiting on user.
 - [ ] Point cron-job.org and GitHub Actions at the new address after publishing — waiting on user.
 - [x] Block other-language letters in Sinhala subtitles (new jobs, editor saves, re-publishes); Dark Knight fully repaired.
+- [x] Final review: 503 backoff, all-key rotation, QA-waiting retry with saved polish (96 tests pass; not run on a real movie).
 - [ ] Re-run `npm run repair:subtitles -- --apply` for ~17 still-damaged published subtitles once Gemini quota resets; ~13 others only got letter clean-up and may need a full re-translation — waiting on Gemini quota / user decision.

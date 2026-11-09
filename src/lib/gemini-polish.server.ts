@@ -48,6 +48,8 @@ export class FinalReviewError extends Error {
     readonly checked: number,
     readonly total: number,
     readonly cues: Cue[],
+    /** True when the review stopped only because of Gemini quota/overload — retry QA later, no human needed. */
+    readonly temporary = false,
   ) {
     super(message);
     this.name = "FinalReviewError";
@@ -282,16 +284,34 @@ async function auditBatch(key: string, model: string, batch: { id: number; en: s
         },
       }),
     });
-    if (!response.ok) { await response.body?.cancel(); return null; }
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      let reason = "";
+      try { reason = JSON.parse(body)?.error?.status ?? ""; } catch { /* not JSON */ }
+      throw new AuditRequestError(response.status, reason || body.slice(0, 120));
+    }
     const data = await response.json();
     const rawText = data?.candidates?.[0]?.content?.parts?.filter((p: { thought?: boolean }) => !p.thought).map((p: { text?: string }) => p.text ?? "").join("");
     return rawText ? JSON.parse(rawText) : null;
-  } catch {
+  } catch (error) {
+    if (error instanceof AuditRequestError) throw error;
+    if ((error as Error)?.name === "AbortError") throw new AuditRequestError(408, "timeout");
     return null;
   } finally {
     clearTimeout(timeout);
   }
 }
+
+/** HTTP failure from the final review; 429/503/5xx/timeouts are temporary (quota or overload), not content problems. */
+export class AuditRequestError extends Error {
+  constructor(readonly status: number, readonly reason: string) {
+    super(`HTTP ${status}${reason ? ` ${reason}` : ""}`);
+    this.name = "AuditRequestError";
+  }
+  get temporary() { return this.status === 408 || this.status === 429 || this.status >= 500 || this.status === 0; }
+}
+
+const auditSleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** Side-by-side English vs Sinhala review of EVERY spoken line before publishing; applies safe corrections. */
 export async function runFinalQAAudit(
@@ -303,8 +323,9 @@ export async function runFinalQAAudit(
     isTest?: boolean;
     model?: string;
     auditBatchFn?: typeof auditBatch | undefined;
+    retryDelayMs?: number | undefined;
   } = {}
-): Promise<{ passed: boolean; checked: number; corrected: number; summary: string }> {
+): Promise<{ passed: boolean; checked: number; corrected: number; summary: string; temporary?: boolean }> {
   log("  final check: comparing every English line with its Sinhala line…");
   if (options.isTest) {
     log(`  ✓ Final review: ${english.length} cues compared with English`);
@@ -323,7 +344,7 @@ export async function runFinalQAAudit(
   const batches: (typeof lines)[] = [];
   for (let i = 0; i < lines.length; i += 60) batches.push(lines.slice(i, i + 60));
 
-  let corrected = 0, reviewed = 0, next = 0;
+  let corrected = 0, reviewed = 0, next = 0, temporaryFailures = 0, failedBatches = 0;
   const summaries: string[] = [];
   const workers = Math.max(1, Math.min(keys.length, batches.length, 4));
   await Promise.all(Array.from({ length: workers }, async (_, w) => {
@@ -332,8 +353,28 @@ export async function runFinalQAAudit(
       const batch = batches[b]!;
       let res = null;
       const reviewBatch = options.auditBatchFn ?? auditBatch;
-      for (let k = 0; k < Math.min(3, keys.length) && !res; k++) {
-        const candidate = await reviewBatch(keys[(w + b + k) % keys.length]!, model, batch);
+      let overloadRetries = 0;
+      let sawTemporary = false;
+      // Try every key at most once; 503 overload gets up to 2 jittered backoff retries on the same key.
+      for (let k = 0; k < keys.length && !res; k++) {
+        let candidate: Awaited<ReturnType<typeof auditBatch>> = null;
+        try {
+          candidate = await reviewBatch(keys[(w + b + k) % keys.length]!, model, batch);
+        } catch (error) {
+          const temp = error instanceof AuditRequestError ? error.temporary : true;
+          if (temp) sawTemporary = true;
+          const status = error instanceof AuditRequestError ? error.status : 0;
+          if (status === 503 && overloadRetries < 2 && !options.isTest) {
+            const waitMs = 2000 * 2 ** overloadRetries + Math.floor(Math.random() * 1000);
+            overloadRetries++;
+            log(`  final review: Gemini busy (503) — retry in ${(waitMs / 1000).toFixed(1)}s`);
+            await auditSleep(options.retryDelayMs ?? waitMs);
+            k--; // same key again
+          } else if (status === 429) {
+            await auditSleep(options.retryDelayMs ?? 1000 + Math.floor(Math.random() * 1000));
+          }
+          continue;
+        }
         const validIds = new Set(batch.map((line) => line.id));
         const valid = candidate
           && typeof candidate.summary === "string"
@@ -346,7 +387,12 @@ export async function runFinalQAAudit(
           );
         if (valid) res = candidate;
       }
-      if (!res) { log(`  final review: lines ${batch[0]!.id}–${batch.at(-1)!.id} could not be reviewed (kept polished text)`); continue; }
+      if (!res) {
+        failedBatches++;
+        if (sawTemporary) temporaryFailures++;
+        log(`  final review: lines ${batch[0]!.id}–${batch.at(-1)!.id} could not be reviewed${sawTemporary ? " (Gemini busy/quota — will retry later)" : ""}`);
+        continue;
+      }
       reviewed += batch.length;
       if (res.summary) summaries.push(res.summary);
       const ids = new Set(batch.map((l) => l.id));
@@ -368,7 +414,9 @@ export async function runFinalQAAudit(
   } else {
     log(`  ⚠ Final review incomplete: only ${reviewed}/${lines.length} spoken lines compared with English — not safe to publish`);
   }
-  return { passed, checked: reviewed, corrected, summary };
+  // Temporary only when every unreviewed batch failed because of quota/overload/network.
+  const temporary = !passed && temporaryFailures > 0 && temporaryFailures >= failedBatches;
+  return { passed, checked: reviewed, corrected, summary, temporary };
 }
 
 export function geminiKeys(env: Record<string, string | undefined> = process.env): string[] {
@@ -811,6 +859,7 @@ export async function polishCues(english: Cue[], sinhala: Cue[], log: Log, optio
         audit.checked,
         english.filter((cue) => needsSinhala(cue.text)).length,
         out,
+        Boolean(audit.temporary),
       );
     }
   }
